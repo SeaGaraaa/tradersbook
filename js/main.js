@@ -7,6 +7,7 @@ import * as CL from "./checklist.js";
 import { exportPNG, exportPDF } from "./export.js";
 import * as St from "./strategy.js";
 import * as SB from "./stbuilder.js";
+import * as Conn from "./connect.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
@@ -189,6 +190,7 @@ function render() {
   else if (S.view === "dashboard") renderDashboard();
   else if (S.view === "checklist") renderChecklist();
   else if (S.view === "strategy") renderStrategy();
+  else if (S.view === "connect") renderConnect();
   else renderStats();
   const top = $("#ideaTop");
   if (top) top.oninput = (e) => pickIdea(e.target.value);
@@ -241,6 +243,7 @@ function renderJournal() {
       <select id="fRes">${opt([...DEF.result, { v: "_empty", t: tr("Без результата") }], f.result, tr("Любой результат"))}</select>
       <select id="fMonth">${opt(months, f.month, tr("Все месяцы"))}</select>
       <input id="fQ" type="search" placeholder="${tr("Поиск")}" value="${esc(f.q)}">
+      ${isBT() ? "" : `<button type="button" class="btn ghost sm cx-open" data-act="cx-open" title="${tr("Перенос сделок с бирж и торговых счетов")}">⇅ ${tr("Подключения")}</button>`}
     </div>
     <div id="summary" class="summary"></div>
     <div id="list"></div>`;
@@ -918,6 +921,149 @@ async function stbSave() {
   } finally {
     setBusy(false);
   }
+}
+
+// ---------------- подключения: перенос сделок с бирж и торговых счетов ----------------
+const CX = { adding: "", form: {}, preview: null, msg: "" };
+const PERIODS = [["last", "с прошлой загрузки"], ["30", "30 дней"], ["90", "90 дней"], ["180", "180 дней"], ["all", "вся доступная история"]];
+
+function renderConnect() {
+  const conns = Conn.list();
+  const src = CX.adding && Conn.SOURCES[CX.adding];
+  const card = (c) => {
+    const s = Conn.SOURCES[c.src];
+    return `<div class="card cx-card">
+      <div class="cx-top"><b>${esc(c.label || s.name)}</b><span class="muted">${esc(s.name)}</span><span class="grow"></span>
+        <button type="button" class="chip-x" data-cxdel="${esc(c.id)}" aria-label="${tr("Удалить")}">×</button></div>
+      <div class="muted cx-last">${c.last ? tr("Последняя загрузка: {d}", { d: new Date(c.last).toLocaleString() }) : tr("Ещё не загружали")}</div>
+      <div class="cx-row">
+        <select data-cxper="${esc(c.id)}">${PERIODS.filter(([v]) => v !== "last" || c.last).map(([v, l]) => `<option value="${v}">${tr(l)}</option>`).join("")}</select>
+        <button type="button" class="btn primary sm" data-cxrun="${esc(c.id)}">${tr("Загрузить сделки")}</button>
+      </div>
+    </div>`;
+  };
+  const pv = CX.preview;
+  $("#view").innerHTML = `<div class="cx-page">
+    <div class="cx-head"><button type="button" class="btn ghost sm" data-act="cx-back">← ${tr("Журнал")}</button>
+      <h2>${tr("Подключения")}</h2></div>
+    <div class="hint cx-note">${tr("Сделки переносятся в журнал сами: время, пара, направление, результат, Profit, а для MT — ещё Risk и RR по стопу. POI, вход, скриншоты и заметки дописываешь ты. Ключи хранятся только на этом устройстве и уходят только на сайт биржи или MetaApi. Создавай ключи только для чтения.")}</div>
+    ${CX.msg ? `<div class="panel cx-msg">${esc(CX.msg)}</div>` : ""}
+    ${pv ? previewHtml(pv) : `
+    <section class="panel"><h3>${tr("Мои подключения")}</h3>
+      ${conns.length ? conns.map(card).join("") : `<div class="empty">${tr("Пока ничего не подключено")}</div>`}
+    </section>
+    <section class="panel"><h3>${tr("Подключить")}</h3>
+      <div class="chips">${Object.entries(Conn.SOURCES).map(([k, s]) => `<button type="button" class="chip ${CX.adding === k ? "on" : ""}" data-cxsrc="${k}">${esc(tr(s.name))}</button>`).join("")}</div>
+      ${src ? `<div class="cx-form">
+        <div class="hint">${esc(tr(src.help))}</div>
+        <label>${tr("Название (для себя)")}<input data-cxf="label" value="${esc(CX.form.label || "")}" placeholder="${esc(tr(src.name))}"></label>
+        ${src.fields.map(([k, l, secret]) => k === "platform"
+          ? `<label>${tr("Платформа")}<select data-cxf="platform">${["mt5", "mt4"].map((p) => `<option ${CX.form.platform === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>`
+          : `<label>${esc(tr(l))}<input data-cxf="${k}" ${secret ? 'type="password" autocomplete="new-password"' : 'autocomplete="off"'} value="${esc(CX.form[k] || "")}" spellcheck="false"></label>`).join("")}
+        <div class="cle-actions"><button type="button" class="btn primary" data-act="cx-save">${tr("Подключить")}</button>
+          <button type="button" class="btn ghost" data-act="cx-cancel">${tr("Отмена")}</button></div>
+      </div>` : ""}
+      <div class="hint cx-soon">${tr("Bitget, KuCoin, MEXC, Gate и Kraken не разрешают запросы из браузера — для них нужен свой посредник, это следующий шаг. Отчёт MT4/MT5 файлом — тоже скоро.")}</div>
+    </section>`}
+  </div>`;
+}
+
+function previewHtml(pv) {
+  const fresh = pv.items.filter((x) => !x.dup);
+  return `<section class="panel"><h3>${tr("Найдено сделок: {n}", { n: pv.items.length })}${pv.items.length - fresh.length ? ` <span class="muted">· ${tr("уже в журнале: {n}", { n: pv.items.length - fresh.length })}</span>` : ""}</h3>
+    ${pv.items.length ? `<div class="ana-scroll-x"><table class="ana cx-table"><thead><tr><th></th><th>${tr("Вход")}</th><th>${tr("Пара")}</th><th></th><th>${tr("Результат")}</th><th class="r">Risk</th><th class="r">Profit</th></tr></thead><tbody>
+      ${pv.items.map((x, i) => `<tr class="${x.dup ? "muted" : ""}"><td><input type="checkbox" data-cxpick="${i}" ${x.pick ? "checked" : ""} ${x.dup ? "disabled" : ""}></td>
+        <td>${esc(fmtDT(x.row[0]))}</td><td>${esc(x.row[3])}</td><td>${esc(x.row[2])}</td>
+        <td>${x.dup ? tr("уже есть") : esc(x.row[7])}</td><td class="r">${x.row[9] === "" ? "—" : fmtNum(x.row[9]) + "%"}</td>
+        <td class="r ${x.row[10] > 0 ? "pos" : x.row[10] < 0 ? "neg" : ""}">${x.row[10] === "" ? "—" : fmtSigned(x.row[10]) + "%"}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty">${tr("Новых закрытых сделок за этот период нет")}</div>`}
+    <div class="cle-actions">
+      ${fresh.length ? `<button type="button" class="btn primary" data-act="cx-add">${tr("Добавить в журнал: {n}", { n: pv.items.filter((x) => x.pick).length })}</button>` : ""}
+      <button type="button" class="btn ghost" data-act="cx-close">${tr("Назад")}</button>
+    </div></section>`;
+}
+
+async function cxSave() {
+  const src = CX.adding, f = CX.form, def = Conn.SOURCES[src];
+  const need = def.fields.filter(([k]) => !(src === "metaapi" && k !== "token")).map(([k]) => k);
+  if (need.some((k) => !String(f[k] || "").trim())) { toast(tr("Заполни все поля"), true); return; }
+  const c = { id: Date.now().toString(36), src, label: (f.label || "").trim() };
+  for (const [k] of def.fields) if (f[k]) c[k] = String(f[k]).trim();
+  if (src === "metaapi") {
+    if (!c.account) {
+      if (!c.login || !c.password || !c.server) { toast(tr("Укажи ID счёта MetaApi или номер счёта, пароль инвестора и сервер"), true); return; }
+      setBusy(true);
+      try { CX.msg = tr("Создаю счёт в MetaApi…"); renderConnect(); c.account = await Conn.metaapiCreate(c, (m) => { CX.msg = tr(m); renderConnect(); }); }
+      catch (e) { CX.msg = ""; setBusy(false); toast(e.message, true); renderConnect(); return; }
+      setBusy(false);
+    }
+    delete c.password; // пароль инвестора нужен только для создания счёта в MetaApi
+  }
+  Conn.upsert(c);
+  CX.adding = ""; CX.form = {}; CX.msg = "";
+  renderConnect();
+  toast(tr("Подключено. Нажми «Загрузить сделки»"));
+}
+
+async function cxRun(id) {
+  const c = Conn.list().find((x) => x.id === id);
+  if (!c) return;
+  const per = $(`[data-cxper="${id}"]`)?.value || "last";
+  const since = per === "last" ? c.last - 2 * 864e5 : per === "all" ? 0 : Date.now() - +per * 864e5;
+  setBusy(true);
+  try {
+    const list = await Conn.fetchTrades(c, since, (m) => { CX.msg = tr(m); renderConnect(); });
+    const done = Conn.imported();
+    const journal = trades("live");
+    const name = Conn.SOURCES[c.src].name;
+    const items = list.map((t) => {
+      const key = `${c.id}:${t.id}`;
+      const dup = done.has(key) || Conn.isDuplicate(t, journal);
+      return { key, row: Conn.toRow(t, c.label || name), dup, pick: !dup };
+    });
+    CX.preview = { conn: id, items, at: Date.now() };
+    CX.msg = "";
+  } catch (e) {
+    CX.msg = "";
+    toast(e.message || String(e), true);
+  } finally {
+    setBusy(false);
+    renderConnect();
+  }
+}
+
+async function cxAdd() {
+  const pv = CX.preview;
+  const picked = pv.items.filter((x) => x.pick && !x.dup);
+  if (!picked.length) return;
+  setBusy(true);
+  try {
+    const last = trades("live").reduce((m, t) => Math.max(m, t.n), 1);
+    await api.appendRows(api.BOOKS.live, picked.map((x) => x.row), book("live").sheetId, last);
+    Conn.markImported(picked.map((x) => x.key)); // удалённое потом из журнала не вернётся при следующей загрузке
+    const c = Conn.list().find((x) => x.id === pv.conn);
+    if (c) { c.last = pv.at; Conn.upsert(c); }
+    CX.preview = null;
+    toast(tr("Добавлено сделок: {n}", { n: picked.length }));
+    await reload();
+  } catch (e) {
+    handleErr(e);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function connectClick(b) {
+  const d = b.dataset, a = d.act;
+  if (a === "cx-back") { setView("journal"); return true; }
+  if (d.cxsrc) { CX.adding = CX.adding === d.cxsrc ? "" : d.cxsrc; CX.form = {}; renderConnect(); return true; }
+  if (a === "cx-cancel") { CX.adding = ""; CX.form = {}; renderConnect(); return true; }
+  if (a === "cx-save") { cxSave(); return true; }
+  if (d.cxdel) { if (confirm(tr("Удалить подключение? Ключи сотрутся с этого устройства."))) { Conn.remove(d.cxdel); renderConnect(); } return true; }
+  if (d.cxrun) { cxRun(d.cxrun); return true; }
+  if (a === "cx-add") { cxAdd(); return true; }
+  if (a === "cx-close") { CX.preview = null; renderConnect(); return true; }
+  return false;
 }
 
 function renderStrategyEditor() {
@@ -1643,6 +1789,8 @@ function events() {
     const btn = e.target.closest("button");
     if (btn && S.view === "checklist" && checklistClick(btn)) return;
     if (btn && S.view === "strategy" && strategyClick(btn)) return;
+    if (btn && S.view === "connect" && connectClick(btn)) return;
+    if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
     const toc = e.target.closest("[data-sttoc]");
     if (toc) { e.preventDefault(); document.getElementById(toc.dataset.sttoc)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     const m = e.target.closest("[data-mode]");
@@ -1657,6 +1805,7 @@ function events() {
   $("#view").addEventListener("input", (e) => {
     if (e.target.dataset.rnote && S.run) { S.run.note = e.target.value; saveRun(); }
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
+    if (e.target.dataset.cxf) { CX.form[e.target.dataset.cxf] = e.target.value; return; }
     if (e.target.dataset.stb && S.stB) { const [p, key] = clPath(S.stB, e.target.dataset.stb); p[key] = e.target.value; if (e.target.classList.contains("stb-area")) autoGrow(e.target); return; }
     if (e.target.dataset.clp && S.clDraft) { const [p, key] = clPath(S.clDraft, e.target.dataset.clp); p[key] = e.target.value; }
   });
@@ -1664,6 +1813,7 @@ function events() {
   $("#view").addEventListener("click", chartTip);
   $("#view").addEventListener("mouseleave", () => { const t = $("#chartTip"); if (t) t.hidden = true; });
   $("#view").addEventListener("change", (e) => {
+    if (e.target.dataset.cxpick && CX.preview) { CX.preview.items[+e.target.dataset.cxpick].pick = e.target.checked; renderConnect(); return; }
     const files = [...(e.target.files || [])];
     if (!files.length) return;
     if (e.target.dataset.stimg) stUpload(files, "insert");

@@ -522,3 +522,21 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .stb-thumb .chip-x { position: absolute; top: 4px; right: 4px; background: var(--panel); }
 .stb-add { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px auto 24px; }
 .stb-page { max-width: 900px; }
+
+/* ---------- подключения ---------- */
+.cx-open { margin-left: auto; white-space: nowrap; }
+.cx-page { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.cx-head { display: flex; align-items: center; gap: 12px; }
+.cx-head h2 { margin: 0; font-size: 20px; }
+.cx-note { margin: 0; }
+.cx-msg { color: var(--accent); font-weight: 600; }
+.cx-card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.cx-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cx-last { font-size: 12px; }
+.cx-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cx-row select, .cx-form select { width: auto; font-size: 14px; padding: 7px 10px; }
+.cx-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.cx-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; }
+.cx-soon { margin-top: 12px; }
+.cx-table td, .cx-table th { white-space: nowrap; }
+.cx-table tr.muted td { opacity: .55; }

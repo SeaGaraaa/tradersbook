@@ -466,3 +466,11 @@ export async function dropPendingImages() {
   const s = (await sheetTitles()).find((x) => x.title === PENDING);
   if (s) await batch([{ deleteSheet: { sheetId: s.sheetId } }]);
 }
+
+// Несколько строк сразу (импорт сделок): одна запись и одна сортировка.
+export async function appendRows(book, rows, sheetId, lastKnownRow) {
+  if (!rows.length) return;
+  await post(`${SHEETS}${ID}/values/${encodeURIComponent(`${q(book.title)}!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    { values: rows.map((v) => v.slice(0, book.ncols)) });
+  await sortSheet(book, sheetId, lastKnownRow + rows.length);
+}
