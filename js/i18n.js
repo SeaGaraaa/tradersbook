@@ -247,4 +247,20 @@ export const EN = {
   "Загружено картинок: {n}": "Images uploaded: {n}",
   "не подошло по имени: {n}": "names didn't match: {n}",
   "Стратегия сохранена": "Strategy saved",
+
+  // статистика
+  "Статистика": "Statistics",
+  "Пока нет сделок с датой": "No dated trades yet",
+  "Сделок": "Trades",
+  "Прибыль по периодам": "Profit by period",
+  "Итог": "Result",
+  "в среднем {n} в месяц": "{n} per month on average",
+  "Лучший месяц": "Best month",
+  "Худший месяц": "Worst month",
+  "Серии подряд": "Streaks",
+  "побед / поражений": "wins / losses",
+  "Прибыль по месяцам, % от счёта": "Profit by month, % of account",
+  "По дням недели": "By weekday",
+  "— день входа в сделку": "— trade entry day",
+  "Дни недели — подробно": "Weekdays — details",
 };

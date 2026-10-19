@@ -461,3 +461,31 @@ label.file { color: var(--text) !important; font-size: 13px !important; margin: 
 }
 .cl-rule { margin: 4px 0 0; font-weight: 600; color: var(--text); }
 .cl-rule .link-btn { font-size: 13px; }
+
+/* ---------- страница «Статистика» ---------- */
+.stats-page { max-width: 1100px; margin: 0 auto; }
+.stats-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.stats-kpis .kpi { padding: 16px 18px; }
+.stats-kpis .kpi-v { font-size: 28px; }
+.kpi-sub { margin-top: 4px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stats-page .panel { padding: 18px 20px; }
+.stats-page .panel h3 { font-size: 15px; margin-bottom: 14px; }
+svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
+.zb-hit { fill: transparent; }
+.zb.pos .zb-bar { fill: var(--win); }
+.zb.neg .zb-bar { fill: var(--lose); }
+.zb:hover .zb-bar { opacity: .82; }
+.zb:hover .zb-hit { fill: color-mix(in srgb, var(--text) 5%, transparent); }
+.zb-val { fill: var(--text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stats-table td, .stats-table th { padding: 9px 10px; }
+.stats-table tbody tr:hover td { background: var(--panel2); }
+.stats-table .wlb { white-space: nowrap; }
+.stats-two { margin-top: 14px; }
+.chart-tip { position: fixed; z-index: 90; pointer-events: none; max-width: 320px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+@media (max-width: 900px) { .stats-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .stats-kpis .kpi-v { font-size: 22px; }
+  .stats-page .panel { padding: 14px; }
+  .zb-val { font-size: 15px; }
+}

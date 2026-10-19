@@ -1,7 +1,7 @@
 import { CONFIG } from "../config.js";
 import * as auth from "./auth.js";
 import * as api from "./api.js";
-import { compute, COL } from "./stats.js";
+import { compute, period, COL } from "./stats.js";
 import { TF, NUM_COLS, IDEA, SCREENS, CHECK, toForm, formValues, diff } from "./form.js";
 import * as CL from "./checklist.js";
 import { exportPNG, exportPDF } from "./export.js";
@@ -441,24 +441,106 @@ function renderDashboard() {
     </div>`;
 }
 
-// ---------------- Stats ----------------
+// ---------------- Статистика ----------------
+
+// Столбцы «от нуля»: прибыльные вверх (зелёные), убыточные вниз (красные); подпись значения у конца столбца.
+function zeroBars(rows, label, short, frac = 1) {
+  if (!rows.length) return `<div class="empty">${tr("Пока нет сделок с датой")}</div>`;
+  const full = Math.min(1100, $("#view")?.clientWidth || 1000) - 80;
+  const W = Math.round(Math.max(300, window.innerWidth > 900 ? full * frac - (frac < 1 ? 30 : 0) : full));
+  const vals = rows.map((r) => r.profit);
+  const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
+  // место под подписи значений: сверху — у прибыльных, снизу — у убыточных (не налезают на подписи периодов)
+  const H = 260, top = 26, bottom = 30 + (lo < 0 ? 24 : 0), padX = 8;
+  const span = hi - lo || 1;
+  const Y = (v) => top + (hi - v) / span * (H - top - bottom);
+  const slot = (W - padX * 2) / rows.length;
+  const bw = Math.min(64, slot * 0.62);
+  const y0 = Y(0);
+  const bars = rows.map((r, i) => {
+    const cx = padX + slot * (i + 0.5);
+    const y = Y(r.profit), h = Math.max(2, Math.abs(y - y0));
+    const up = r.profit >= 0;
+    const by = up ? y0 - h : y0;
+    const rr = Math.min(4, h / 2);
+    const L = cx - bw / 2, R = cx + bw / 2;
+    // скругление только у свободного конца столбца, у нулевой линии — прямой край
+    const path = up
+      ? `M${L},${by + h}V${by + rr}Q${L},${by} ${L + rr},${by}H${R - rr}Q${R},${by} ${R},${by + rr}V${by + h}Z`
+      : `M${L},${by}V${by + h - rr}Q${L},${by + h} ${L + rr},${by + h}H${R - rr}Q${R},${by + h} ${R},${by + h - rr}V${by}Z`;
+    const tip = `${label(r)} · ${tr("Сделок")}: ${r.trades} · WinRate ${fmtPct(r.winrate)} · ${fmtSigned(r.profit)}%${r.withR ? ` · ${fmtSigned(r.totalR)} R` : ""}`;
+    const ty = up ? by - 8 : by + h + 16;
+    return `<g class="zb ${up ? "pos" : "neg"}" data-tip="${esc(tip)}">
+      <rect x="${cx - slot / 2}" y="${top - 20}" width="${slot}" height="${H - top - bottom + 40}" class="zb-hit"/>
+      <path d="${path}" class="zb-bar"/>
+      <text x="${cx}" y="${ty}" text-anchor="middle" class="zb-val">${fmtSigned(r.profit)}%</text>
+      <text x="${cx}" y="${H - 8}" text-anchor="middle" class="axis">${esc(short(r))}</text>
+    </g>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" class="zbars" role="img" aria-label="${esc(tr("Прибыль по периодам"))}">
+    <line x1="${padX}" x2="${W - padX}" y1="${y0}" y2="${y0}" class="zeroline"/>${bars}</svg>`;
+}
 
 function renderStats() {
   if (isBT() && !activeIdea()) { $("#view").innerHTML = modeBar() + `<div class="empty">${tr("Пока нет сделок бэктеста с результатом")}</div>`; return; }
-  const st = compute(scoped(), S.lists);
+  const p = period(scoped());
+  const T = p.total;
+  const WD = LANG === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+  const WDL = LANG === "en" ? ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    : ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
+  const tile = (l, v, cls = "", sub = "") => `<div class="kpi"><div class="kpi-l">${l}</div><div class="kpi-v ${cls}">${v}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`;
+  const pf = (x) => (x == null ? "—" : fmtNum(x));
   const row = (label, r, cls = "") => `<tr class="${cls}"><td>${label}</td><td class="r">${r.trades}</td>
-    <td class="r"><span class="${sgn(r.profit)}">${fmtSigned(r.profit)}%</span></td><td class="r">${fmtPct(r.winrate)}</td></tr>`;
-  const max = Math.max(1e-9, ...st.monthly.map((m) => Math.abs(m.profit)));
-  $("#view").innerHTML = modeBar() + `
-    <section class="panel stats-panel"><h3>${tr("По месяцам")}${isBT() ? ` <span class="muted">${tr("— {name}, месяц — дата сделки на истории", { name: esc(activeIdea()) })}</span>` : ""}</h3>
-      <div class="bars">${st.monthly.map((m) => `
-        <div class="mbar"><div class="mbar-track"><div class="mbar-fill ${sgn(m.profit)}" style="--h:${Math.round(Math.abs(m.profit) / max * 100)}%"></div></div>
-        <div class="mbar-l">${esc(fmtMonth(m.key).slice(0, 3))}</div></div>`).join("")}</div>
-      <table class="ana">
-        <thead><tr><th>${tr("Месяц")}</th><th class="r">Trades</th><th class="r">Profit</th><th class="r">WinRate</th></tr></thead>
-        <tbody>${st.monthly.map((m) => row(esc(fmtMonth(m.key)), m)).join("")}${row(tr("Итого"), st.monthlyTotal, "total")}</tbody>
-      </table>
-    </section>`;
+    <td class="r wlb"><span class="pos">${r.win}</span> / <span class="neg">${r.lose}</span> / <span class="muted">${r.be}</span></td>
+    <td class="r">${fmtPct(r.winrate)}</td><td class="r"><b class="${sgn(r.profit)}">${fmtSigned(r.profit)}%</b></td>
+    <td class="r ${sgn(r.totalR)}">${r.withR ? fmtSigned(r.totalR) : "—"}</td><td class="r">${pf(r.pf)}</td></tr>`;
+  const head = `<thead><tr><th></th><th class="r">${tr("Сделок")}</th><th class="r">W / L / BE</th><th class="r">WinRate</th>
+    <th class="r">Profit</th><th class="r">Σ R</th><th class="r">PF</th></tr></thead>`;
+  $("#view").innerHTML = `<div class="stats-page">${modeBar()}
+    ${isBT() ? `<h2 class="sec">${tr("Идея: {name}", { name: esc(activeIdea()) })}</h2>` : ""}
+    <div class="kpis stats-kpis">
+      ${tile(tr("Итог"), fmtSigned(T.profit) + "%", sgn(T.profit), T.withR ? `${fmtSigned(T.totalR)} R` : "")}
+      ${tile(tr("Сделок"), T.trades, "", tr("в среднем {n} в месяц", { n: fmtNum(p.avgPerMonth, 1) }))}
+      ${tile("WinRate", fmtPct(T.winrate), "", `${T.win} / ${T.lose} / ${T.be}`)}
+      ${tile(tr("Лучший месяц"), p.best ? fmtSigned(p.best.profit) + "%" : "—", p.best ? sgn(p.best.profit) : "", p.best ? esc(fmtMonth(p.best.key)) : "")}
+      ${tile(tr("Худший месяц"), p.worst ? fmtSigned(p.worst.profit) + "%" : "—", p.worst ? sgn(p.worst.profit) : "", p.worst ? esc(fmtMonth(p.worst.key)) : "")}
+      ${tile(tr("Серии подряд"), `<span class="pos">${p.maxWinStreak}</span> / <span class="neg">${p.maxLossStreak}</span>`, "", tr("побед / поражений"))}
+    </div>
+    <section class="panel">
+      <h3>${tr("Прибыль по месяцам, % от счёта")}</h3>
+      ${zeroBars(p.months, (m) => fmtMonth(m.key), (m) => fmtMonth(m.key).slice(0, 3) + " " + m.key.slice(2, 4))}
+    </section>
+    <section class="panel">
+      <h3>${tr("По месяцам")}${isBT() ? ` <span class="muted">${tr("— {name}, месяц — дата сделки на истории", { name: esc(activeIdea()) })}</span>` : ""}</h3>
+      <div class="ana-scroll-x"><table class="ana stats-table">${head}
+        <tbody>${[...p.months].reverse().map((m) => row(esc(fmtMonth(m.key)), m)).join("")}${row(tr("Итого"), T, "total")}</tbody>
+      </table></div>
+    </section>
+    <div class="ana-grid stats-two">
+      <section class="panel">
+        <h3>${tr("По дням недели")} <span class="muted">${tr("— день входа в сделку")}</span></h3>
+        ${zeroBars(p.days, (d) => WDL[d.day], (d) => WD[d.day], 0.5)}
+      </section>
+      <section class="panel">
+        <h3>${tr("Дни недели — подробно")}</h3>
+        <div class="ana-scroll-x"><table class="ana stats-table">${head}
+          <tbody>${p.days.map((d) => row(WDL[d.day], d)).join("")}</tbody></table></div>
+      </section>
+    </div>
+  </div>`;
+}
+
+// Подсказка у столбцов статистики (наведение мышью или касание).
+function chartTip(e) {
+  const g = e.target.closest?.("[data-tip]");
+  let tip = $("#chartTip");
+  if (!g) { if (tip) tip.hidden = true; return; }
+  if (!tip) { tip = Object.assign(document.createElement("div"), { id: "chartTip", className: "chart-tip" }); document.body.append(tip); }
+  tip.textContent = g.dataset.tip;
+  tip.hidden = false;
+  const x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  tip.style.left = Math.max(8, x) + "px";
+  tip.style.top = Math.max(8, e.clientY - tip.offsetHeight - 12) + "px";
 }
 
 // ---------------- карточка сделки ----------------
@@ -1330,6 +1412,9 @@ function events() {
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
     if (e.target.dataset.clp && S.clDraft) { const [p, key] = clPath(S.clDraft, e.target.dataset.clp); p[key] = e.target.value; }
   });
+  $("#view").addEventListener("mousemove", chartTip);
+  $("#view").addEventListener("click", chartTip);
+  $("#view").addEventListener("mouseleave", () => { const t = $("#chartTip"); if (t) t.hidden = true; });
   $("#view").addEventListener("change", (e) => {
     const files = [...(e.target.files || [])];
     if (!files.length) return;
@@ -1347,7 +1432,7 @@ function events() {
   });
   editorEvents();
   let rt;
-  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => S.view === "dashboard" && renderDashboard(), 200); });
+  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (S.view === "dashboard") renderDashboard(); if (S.view === "stats") renderStats(); }, 200); });
   window.addEventListener("pagehide", () => S.ed && saveDraft());
   document.addEventListener("visibilitychange", () => { if (document.hidden && S.ed) saveDraft(); });
 }

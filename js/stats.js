@@ -90,3 +90,46 @@ export function compute(trades, lists) {
   return { kpi, equity, poi, entry, session, pair, monthly, monthlyTotal };
 }
 
+
+// Страница «Статистика»: по месяцам (подробно), по дням недели, серии подряд.
+export function period(trades) {
+  const done = trades.filter((t) => res(t) !== "");
+  const rOf = (t) => { const p = num(t.v[C.profit]), r = num(t.v[C.risk]); return r > 0 && !Number.isNaN(p) ? p / r : NaN; };
+  const agg = (list) => {
+    const d = list.filter((t) => res(t) !== "");
+    const win = d.filter((t) => res(t) === "Win"), lose = d.filter((t) => res(t) === "Lose");
+    const rs = d.map(rOf).filter((x) => !Number.isNaN(x));
+    const lossSum = Math.abs(sum(lose, profit));
+    return {
+      trades: d.length, win: win.length, lose: lose.length, be: d.length - win.length - lose.length,
+      winrate: win.length + lose.length ? win.length / (win.length + lose.length) : 0,
+      profit: sum(list, profit), totalR: rs.reduce((s, x) => s + x, 0), withR: rs.length,
+      pf: lossSum ? sum(win, profit) / lossSum : null,
+    };
+  };
+  const byMonth = new Map(), byDay = new Map();
+  for (const t of trades) {
+    const s = parseDT(t.v[C.open]);
+    if (Number.isNaN(s)) continue;
+    const k = monthKey(s);
+    if (!byMonth.has(k)) byMonth.set(k, []);
+    byMonth.get(k).push(t);
+    const wd = new Date(Math.round((s - 25569) * 864e5)).getUTCDay(); // 0 — воскресенье
+    if (!byDay.has(wd)) byDay.set(wd, []);
+    byDay.get(wd).push(t);
+  }
+  const months = [...byMonth.keys()].sort().map((key) => ({ key, ...agg(byMonth.get(key)) }));
+  const days = [1, 2, 3, 4, 5, 6, 0].filter((d) => byDay.has(d)).map((d) => ({ day: d, ...agg(byDay.get(d)) }));
+  // серии подряд по времени входа (BE серию не прерывает и не продолжает)
+  const ordered = [...done].sort((a, b) => parseDT(a.v[C.open]) - parseDT(b.v[C.open]));
+  let w = 0, l = 0, maxW = 0, maxL = 0;
+  for (const t of ordered) {
+    if (res(t) === "Win") { w++; l = 0; maxW = Math.max(maxW, w); }
+    else if (res(t) === "Lose") { l++; w = 0; maxL = Math.max(maxL, l); }
+  }
+  const withTrades = months.filter((m) => m.trades);
+  const best = withTrades.length ? withTrades.reduce((a, b) => (b.profit > a.profit ? b : a)) : null;
+  const worst = withTrades.length ? withTrades.reduce((a, b) => (b.profit < a.profit ? b : a)) : null;
+  return { total: agg(trades), months, days, best, worst, maxWinStreak: maxW, maxLossStreak: maxL,
+    avgPerMonth: months.length ? done.length / months.length : 0 };
+}
