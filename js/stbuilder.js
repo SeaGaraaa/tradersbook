@@ -88,7 +88,7 @@ export function toMarkdown(d) {
         if (lines(st.inval).length) part.push("", ":::callout ⛔", `**${w.inval}**`, ...bullets(st.inval), ":::");
         part.push(...pics(st.images));
         const name = (st.name || "").trim();
-        if (!name && !part.length) continue;
+        if (!part.length && (!name || name === w.setup)) continue;
         body.push(`## ${name || "—"}`, `:::details ${w.open}`, ...part, ":::");
       }
     }
