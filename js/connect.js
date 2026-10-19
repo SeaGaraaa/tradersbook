@@ -272,7 +272,9 @@ export function fromMtDeals(deals) {
     const gross = ds.reduce((s, d) => s + d.profit, 0), pnl = ds.reduce((s, d) => s + d.profit + d.comm + d.swap, 0);
     const last = outs[outs.length - 1];
     const losing = (p) => p > 0 && (p - entry) * dir < 0, winning = (p) => p > 0 && (p - entry) * dir > 0;
-    let sl = ins[0].sl > 0 ? ins[0].sl : last.bySL && losing(last.price) ? last.price : losing(last.sl) ? last.sl : 0;
+    // SL ордера при входе; иначе последний SL позиции (если он в убыток); иначе цена закрытия по стопу
+    // (стоп в безубытке или подтянутый в плюс — начальный риск неизвестен, Risk остаётся пустым)
+    const sl = ins[0].sl > 0 ? ins[0].sl : losing(last.sl) ? last.sl : last.bySL && !(last.sl > 0) && losing(last.price) ? last.price : 0;
     const slSource = ins[0].sl > 0 ? "order" : sl ? "last" : "";
     const tp = ins[0].tp > 0 ? ins[0].tp : winning(last.tp) ? last.tp : 0;
     const perUnit = exit !== entry ? Math.abs(gross / (exit - entry)) : 0; // деньги за 1.0 цены всей позиции
@@ -295,18 +297,25 @@ export async function fetchTrades(c, since, progress) {
   return r.trades.sort((a, b) => a.open - b.open);
 }
 
+const ALIASES = [
+  ["GER40", "DAX40", "DE40", "GER30", "DE30", "DAX", "GDAXI"], ["US30", "DJ30", "WS30", "DOW", "DJI"], ["NAS100", "US100", "USTEC", "NDX", "NQ100"],
+  ["SPX500", "US500", "SP500", "SPX"], ["UK100", "FTSE100", "FTSE"], ["XAUUSD", "GOLD"], ["XAGUSD", "SILVER"], ["USOIL", "WTI", "XTIUSD"], ["UKOIL", "BRENT", "XBRUSD"],
+];
+const aliasOf = (p) => ALIASES.find((g) => g.includes(p))?.[0] || p;
+// Название пары как в списке пользователя (DAX40 из терминала -> GER40, если в журнале так)
+export const pairName = (s, pairs = []) => { const p = normPair(s), a = aliasOf(p); return pairs.find((x) => aliasOf(normPair(x)) === a) || p; };
 export const normPair = (s) => String(s || "").toUpperCase().replace(/-SWAP$|-FUTURES$/, "").replace(/\.[A-Z0-9]+$/, "").replace(/[-_/ ]/g, "").replace(/\+$/, "");
-const wall = (ms) => (ms - new Date(ms).getTimezoneOffset() * 60000) / DAY + EPOCH_SHIFT; // время на часах устройства
+const wall = (ms) => (Math.floor(ms / 60000) * 60000 - new Date(ms).getTimezoneOffset() * 60000) / DAY + EPOCH_SHIFT; // время на часах устройства, без секунд
 const r2 = (x) => Math.round(x * 100) / 100;
 
-export function toRow(t, srcName) {
+export function toRow(t, srcName, pairs = []) {
   const v = new Array(MAXCOLS).fill("");
   const open = wall(t.open), close = wall(t.close);
   const profitPct = t.balance > 0 ? r2(t.pnl / t.balance * 100) : "";
   const riskPct = t.riskMoney && t.balance > 0 ? r2(t.riskMoney / t.balance * 100) : "";
   const R = t.riskMoney ? t.pnl / t.riskMoney : NaN;
   const be = Number.isFinite(R) ? Math.abs(R) <= 0.1 : profitPct !== "" ? Math.abs(profitPct) <= 0.05 : Math.abs(t.pnl) < 1e-9;
-  v[0] = open; v[1] = close; v[2] = t.dir > 0 ? "Long" : "Short"; v[3] = normPair(t.sym); v[4] = sessionOf(open);
+  v[0] = open; v[1] = close; v[2] = t.dir > 0 ? "Long" : "Short"; v[3] = pairName(t.sym, pairs); v[4] = sessionOf(open);
   v[7] = be ? "BE" : t.pnl > 0 ? "Win" : "Lose";
   v[8] = t.sl && t.tp && t.entry !== t.sl ? r2(Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl)) : "";
   v[9] = riskPct; v[10] = profitPct;
@@ -322,6 +331,83 @@ const IMP = "tj.imported";
 export const imported = () => { try { return new Set(JSON.parse(lsGet(IMP) || "[]")); } catch { return new Set(); } };
 export function markImported(ids) { const s = imported(); ids.forEach((i) => s.add(i)); lsSet(IMP, JSON.stringify([...s].slice(-20000))); }
 export function isDuplicate(t, journal) {
-  const p = normPair(t.sym), o = wall(t.open);
-  return journal.some((x) => normPair(x.v[3]) === p && Math.abs(parseDT(x.v[0]) - o) <= 2 / 1440);
+  const p = aliasOf(normPair(t.sym)), o = wall(t.open);
+  return journal.some((x) => aliasOf(normPair(x.v[3])) === p && Math.abs(parseDT(x.v[0]) - o) <= 2 / 1440);
+}
+
+// ---------- отчёт терминала MT5 / MT4 (HTML: «История» → правый клик → «Отчёт» → HTML) ----------
+// Строки узнаются по форме, а не по названиям столбцов, — подходит отчёт на любом языке терминала.
+const DT = /^(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/;
+const num = (s) => { const v = parseFloat(String(s).replace(/[\s\u00a0]/g, "")); return Number.isFinite(v) ? v : 0; };
+const wallUTC = (s) => { const m = String(s).match(DT); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : NaN; };
+
+export function decodeReport(buf) {
+  const b = new Uint8Array(buf);
+  if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder("utf-16le").decode(b);
+  if (b[0] === 0xfe && b[1] === 0xff) return new TextDecoder("utf-16be").decode(b);
+  return new TextDecoder("utf-8").decode(b);
+}
+
+export function parseMtReport(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const rows = [...doc.querySelectorAll("tr")].map((tr) => [...tr.children].filter((c) => !c.classList.contains("hidden")).map((c) => c.textContent.replace(/\u00a0/g, " ").trim()));
+  const account = (rows.find((r) => r.length === 2 && /^\d{4,}\s*\(/.test(r[1]))?.[1] || "").match(/^\d+/)?.[0] || "";
+  const reportDate = rows.find((r) => r.length === 2 && DT.test(r[1]))?.[1] || "";
+  const positions = [], deals = [];
+  let platform = "";
+  for (const r of rows) {
+    // MT5, «Позиции»: время, позиция, символ, тип, объём, цена, S/L, T/P, время, цена, комиссия, своп, прибыль
+    if (r.length === 13 && DT.test(r[0]) && DT.test(r[8]) && /^(buy|sell)/i.test(r[3])) {
+      platform = "mt5";
+      positions.push({ open: r[0], pos: r[1], sym: r[2], dir: /^buy/i.test(r[3]) ? 1 : -1, vol: num(r[4]), entry: num(r[5]), sl: num(r[6]), tp: num(r[7]),
+        close: r[8], exit: num(r[9]), comm: num(r[10]), swap: num(r[11]), profit: num(r[12]) });
+      continue;
+    }
+    // MT4, «Закрытые сделки»: тикет, время, тип, объём, символ, цена, S/L, T/P, время, цена, комиссия, налоги, своп, прибыль
+    if (r.length >= 14 && DT.test(r[1]) && DT.test(r[8]) && /^(buy|sell)$/i.test(r[2])) {
+      platform = "mt4";
+      positions.push({ open: r[1], pos: r[0], sym: r[4], dir: /^buy/i.test(r[2]) ? 1 : -1, vol: num(r[3]), entry: num(r[5]), sl: num(r[6]), tp: num(r[7]),
+        close: r[8], exit: num(r[9]), comm: num(r[10]) + num(r[11]), swap: num(r[12]), profit: num(r[13]), bySL: /\[sl\]/i.test(r.join(" ")) });
+      continue;
+    }
+    // MT5, «Сделки»: время, сделка, символ, тип, направление, объём, цена, ордер, [издержки], комиссия, сбор, своп, прибыль, баланс, комментарий
+    if (r.length >= 14 && DT.test(r[0]) && /^\d+$/.test(r[1]) && !DT.test(r[8])) {
+      deals.push({ t: r[0], sym: r[2], type: r[3].toLowerCase(), dirn: r[4].toLowerCase(), price: num(r[6]), profit: num(r.at(-3)), comment: r.at(-1) });
+      continue;
+    }
+    // MT4, пополнения/снятия: тикет, время, balance, комментарий, сумма
+    if (r.length >= 4 && r.length <= 6 && DT.test(r[1]) && /^(balance|credit)$/i.test(r[2])) {
+      deals.push({ t: r[1], sym: "", type: "balance", dirn: "", price: 0, profit: num(r.at(-1)), comment: r[3] });
+    }
+  }
+  return { account, reportDate, platform, positions, deals };
+}
+
+// Часовой пояс сервера: «ny7» — Нью-Йорк + 7 ч (так у большинства брокеров и проп-компаний), или сдвиг от UTC в минутах.
+const NY_H = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" });
+function nyOffsetMin(utcMs) { const ny = +NY_H.format(new Date(utcMs)), u = new Date(utcMs).getUTCHours(); let d = ny - u; if (d > 12) d -= 24; if (d < -12) d += 24; return d * 60; }
+export function serverToUtc(wallMs, tz) {
+  if (tz === "ny7") { const guess = wallMs - (nyOffsetMin(wallMs) + 420) * 60000; return wallMs - (nyOffsetMin(guess) + 420) * 60000; }
+  return wallMs - (+tz || 0) * 60000;
+}
+// Угадать пояс по дате отчёта и времени сохранения файла (обычно сохраняют сразу после создания).
+export function guessServerTz(reportDate, savedMs) {
+  const w = wallUTC(reportDate);
+  if (!Number.isFinite(w) || !savedMs || Math.abs(w - savedMs) > 15 * 3600e3) return "ny7";
+  const off = Math.round((w - savedMs) / 1800e3) * 30;
+  return off === nyOffsetMin(savedMs) + 420 ? "ny7" : String(off);
+}
+
+export function fromReport(p, tz) {
+  const T = (s) => serverToUtc(wallUTC(s), tz);
+  const slHits = new Set(p.deals.filter((d) => /\[sl/i.test(d.comment) && d.dirn !== "in").map((d) => `${d.sym}|${d.t}`));
+  const norm = [];
+  for (const d of p.deals) if (!/^(buy|sell)/.test(d.type)) norm.push({ id: "b" + d.t, pos: "", t: T(d.t), sym: "", type: "balance", entry: "", vol: 0, price: 0, profit: d.profit, comm: 0, swap: 0, sl: 0, tp: 0 });
+  for (const x of p.positions) {
+    const type = x.dir > 0 ? "buy" : "sell", opp = x.dir > 0 ? "sell" : "buy";
+    norm.push({ id: x.pos + "i", pos: x.pos, t: T(x.open), sym: x.sym, type, entry: "in", vol: x.vol, price: x.entry, profit: 0, comm: 0, swap: 0, sl: 0, tp: 0 });
+    norm.push({ id: x.pos + "o", pos: x.pos, t: T(x.close), sym: x.sym, type: opp, entry: "out", vol: x.vol, price: x.exit, profit: x.profit, comm: x.comm, swap: x.swap,
+      sl: x.sl, tp: x.tp, bySL: x.bySL || slHits.has(`${x.sym}|${x.close}`) });
+  }
+  return fromMtDeals(norm);
 }

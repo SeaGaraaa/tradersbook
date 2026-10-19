@@ -357,4 +357,18 @@ export const EN = {
   "Сервер (как в терминале)": "Server (as in the terminal)",
   "mt5 или mt4": "mt5 or mt4",
   "Платформа": "Platform",
+  // отчёт MT и скрытые сделки
+  "скрыта": "hidden",
+  "Скрыть эти сделки": "Hide these trades",
+  "Сделки без галочки не добавятся и в следующий раз будут показаны как «скрыта» — так удалённые из журнала сделки не вернутся сами.": "Unticked trades won’t be added and next time will show as “hidden” — so trades you deleted from the journal don’t come back by themselves.",
+  "Отчёт MT4/MT5 (файл)": "MT4/MT5 report (file)",
+  "Нью-Йорк + 7 ч (как у большинства брокеров и проп-компаний)": "New York + 7 h (most brokers and prop firms)",
+  "В терминале: вкладка «История» → правый клик → «Отчёт» → HTML. Сохрани файл и выбери его здесь. Ключи не нужны.": "In the terminal: “History” tab → right-click → “Report” → HTML. Save the file and pick it here. No keys needed.",
+  "Выбрать файл отчёта": "Choose report file",
+  "Счёт {a}: позиций {n}": "Account {a}: {n} positions",
+  "Время сервера в отчёте": "Server time in the report",
+  "Показать сделки": "Show trades",
+  "В файле не нашлось закрытых позиций — это точно HTML-отчёт из MT4/MT5?": "No closed positions found — is this an HTML report from MT4/MT5?",
+  "Не получилось прочитать файл: {e}": "Couldn’t read the file: {e}",
+  "отчёт": "report",
 };

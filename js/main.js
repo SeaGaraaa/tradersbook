@@ -924,7 +924,7 @@ async function stbSave() {
 }
 
 // ---------------- подключения: перенос сделок с бирж и торговых счетов ----------------
-const CX = { adding: "", form: {}, preview: null, msg: "" };
+const CX = { adding: "", form: {}, preview: null, msg: "", report: null };
 const PERIODS = [["last", "с прошлой загрузки"], ["30", "30 дней"], ["90", "90 дней"], ["180", "180 дней"], ["all", "вся доступная история"]];
 
 function renderConnect() {
@@ -953,7 +953,9 @@ function renderConnect() {
       ${conns.length ? conns.map(card).join("") : `<div class="empty">${tr("Пока ничего не подключено")}</div>`}
     </section>
     <section class="panel"><h3>${tr("Подключить")}</h3>
-      <div class="chips">${Object.entries(Conn.SOURCES).map(([k, s]) => `<button type="button" class="chip ${CX.adding === k ? "on" : ""}" data-cxsrc="${k}">${esc(tr(s.name))}</button>`).join("")}</div>
+      <div class="chips">${Object.entries(Conn.SOURCES).map(([k, s]) => `<button type="button" class="chip ${CX.adding === k ? "on" : ""}" data-cxsrc="${k}">${esc(tr(s.name))}</button>`).join("")}
+        <button type="button" class="chip ${CX.adding === "file" ? "on" : ""}" data-cxsrc="file">${tr("Отчёт MT4/MT5 (файл)")}</button></div>
+      ${CX.adding === "file" ? reportForm() : ""}
       ${src ? `<div class="cx-form">
         <div class="hint">${esc(tr(src.help))}</div>
         <label>${tr("Название (для себя)")}<input data-cxf="label" value="${esc(CX.form.label || "")}" placeholder="${esc(tr(src.name))}"></label>
@@ -963,9 +965,47 @@ function renderConnect() {
         <div class="cle-actions"><button type="button" class="btn primary" data-act="cx-save">${tr("Подключить")}</button>
           <button type="button" class="btn ghost" data-act="cx-cancel">${tr("Отмена")}</button></div>
       </div>` : ""}
-      <div class="hint cx-soon">${tr("Bitget, KuCoin, MEXC, Gate и Kraken не разрешают запросы из браузера — для них нужен свой посредник, это следующий шаг. Отчёт MT4/MT5 файлом — тоже скоро.")}</div>
+      <div class="hint cx-soon">${tr("Bitget, KuCoin, MEXC, Gate и Kraken не разрешают запросы из браузера — для них нужен свой посредник, это следующий шаг.")}</div>
     </section>`}
   </div>`;
+}
+
+function reportForm() {
+  const r = CX.report;
+  const tzs = [["ny7", tr("Нью-Йорк + 7 ч (как у большинства брокеров и проп-компаний)")], ["0", "UTC"], ["60", "UTC+1"], ["120", "UTC+2"], ["180", "UTC+3"]];
+  if (r && !tzs.some(([v]) => v === r.tz)) tzs.push([r.tz, "UTC" + (r.tz >= 0 ? "+" : "") + r.tz / 60]);
+  return `<div class="cx-form">
+    <div class="hint">${tr("В терминале: вкладка «История» → правый клик → «Отчёт» → HTML. Сохрани файл и выбери его здесь. Ключи не нужны.")}</div>
+    <label class="btn ghost file cx-filebtn">${r ? esc(r.name) : tr("Выбрать файл отчёта")}<input type="file" accept=".html,.htm" data-cxfile="1" hidden></label>
+    ${r ? `<div class="muted">${tr("Счёт {a}: позиций {n}", { a: esc(r.p.account || "—"), n: r.p.positions.length })}</div>
+    <label>${tr("Время сервера в отчёте")}<select data-cxtz="1">${tzs.map(([v, l]) => `<option value="${v}" ${r.tz === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+    <div class="cle-actions"><button type="button" class="btn primary" data-act="cx-report">${tr("Показать сделки")}</button></div>` : ""}
+  </div>`;
+}
+
+async function cxReadReport(file) {
+  try {
+    const p = Conn.parseMtReport(Conn.decodeReport(await file.arrayBuffer()));
+    if (!p.positions.length) { toast(tr("В файле не нашлось закрытых позиций — это точно HTML-отчёт из MT4/MT5?"), true); return; }
+    CX.report = { p, name: file.name, tz: Conn.guessServerTz(p.reportDate, file.lastModified) };
+  } catch (e) {
+    toast(tr("Не получилось прочитать файл: {e}", { e: e.message }), true);
+  }
+  renderConnect();
+}
+
+function cxReportPreview() {
+  const r = CX.report;
+  const list = Conn.fromReport(r.p, r.tz);
+  const done = Conn.imported(), journal = trades("live");
+  const label = (r.p.platform === "mt4" ? "MT4" : "MT5") + (r.p.account ? " " + r.p.account : "") + " (" + tr("отчёт") + ")";
+  const items = list.map((t) => {
+    const key = `file:${r.p.account}:${t.id}`;
+    const dup = Conn.isDuplicate(t, journal), seen = !dup && done.has(key);
+    return { key, row: Conn.toRow(t, label, S.lists.pair), dup, seen, pick: !dup && !seen };
+  });
+  CX.preview = { conn: "", items, at: Date.now() };
+  renderConnect();
 }
 
 function previewHtml(pv) {
@@ -974,11 +1014,12 @@ function previewHtml(pv) {
     ${pv.items.length ? `<div class="ana-scroll-x"><table class="ana cx-table"><thead><tr><th></th><th>${tr("Вход")}</th><th>${tr("Пара")}</th><th></th><th>${tr("Результат")}</th><th class="r">Risk</th><th class="r">Profit</th></tr></thead><tbody>
       ${pv.items.map((x, i) => `<tr class="${x.dup ? "muted" : ""}"><td><input type="checkbox" data-cxpick="${i}" ${x.pick ? "checked" : ""} ${x.dup ? "disabled" : ""}></td>
         <td>${esc(fmtDT(x.row[0]))}</td><td>${esc(x.row[3])}</td><td>${esc(x.row[2])}</td>
-        <td>${x.dup ? tr("уже есть") : esc(x.row[7])}</td><td class="r">${x.row[9] === "" ? "—" : fmtNum(x.row[9]) + "%"}</td>
+        <td>${x.dup ? tr("уже есть") : x.seen && !x.pick ? `<span class="muted">${tr("скрыта")}</span> ${esc(x.row[7])}` : esc(x.row[7])}</td><td class="r">${x.row[9] === "" ? "—" : fmtNum(x.row[9]) + "%"}</td>
         <td class="r ${x.row[10] > 0 ? "pos" : x.row[10] < 0 ? "neg" : ""}">${x.row[10] === "" ? "—" : fmtSigned(x.row[10]) + "%"}</td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty">${tr("Новых закрытых сделок за этот период нет")}</div>`}
+    </tbody></table></div>
+    ${fresh.length ? `<div class="hint">${tr("Сделки без галочки не добавятся и в следующий раз будут показаны как «скрыта» — так удалённые из журнала сделки не вернутся сами.")}</div>` : ""}` : `<div class="empty">${tr("Новых закрытых сделок за этот период нет")}</div>`}
     <div class="cle-actions">
-      ${fresh.length ? `<button type="button" class="btn primary" data-act="cx-add">${tr("Добавить в журнал: {n}", { n: pv.items.filter((x) => x.pick).length })}</button>` : ""}
+      ${fresh.length ? `<button type="button" class="btn primary" data-act="cx-add">${pv.items.some((x) => x.pick) ? tr("Добавить в журнал: {n}", { n: pv.items.filter((x) => x.pick).length }) : tr("Скрыть эти сделки")}</button>` : ""}
       <button type="button" class="btn ghost" data-act="cx-close">${tr("Назад")}</button>
     </div></section>`;
 }
@@ -1018,8 +1059,8 @@ async function cxRun(id) {
     const name = Conn.SOURCES[c.src].name;
     const items = list.map((t) => {
       const key = `${c.id}:${t.id}`;
-      const dup = done.has(key) || Conn.isDuplicate(t, journal);
-      return { key, row: Conn.toRow(t, c.label || name), dup, pick: !dup };
+      const dup = Conn.isDuplicate(t, journal), seen = !dup && done.has(key);
+      return { key, row: Conn.toRow(t, c.label || name, S.lists.pair), dup, seen, pick: !dup && !seen };
     });
     CX.preview = { conn: id, items, at: Date.now() };
     CX.msg = "";
@@ -1035,12 +1076,11 @@ async function cxRun(id) {
 async function cxAdd() {
   const pv = CX.preview;
   const picked = pv.items.filter((x) => x.pick && !x.dup);
-  if (!picked.length) return;
   setBusy(true);
   try {
     const last = trades("live").reduce((m, t) => Math.max(m, t.n), 1);
-    await api.appendRows(api.BOOKS.live, picked.map((x) => x.row), book("live").sheetId, last);
-    Conn.markImported(picked.map((x) => x.key)); // удалённое потом из журнала не вернётся при следующей загрузке
+    if (picked.length) await api.appendRows(api.BOOKS.live, picked.map((x) => x.row), book("live").sheetId, last);
+    Conn.markImported(pv.items.filter((x) => !x.dup).map((x) => x.key)); // добавленные и снятые: потом не предлагаются сами
     const c = Conn.list().find((x) => x.id === pv.conn);
     if (c) { c.last = pv.at; Conn.upsert(c); }
     CX.preview = null;
@@ -1062,6 +1102,7 @@ function connectClick(b) {
   if (d.cxdel) { if (confirm(tr("Удалить подключение? Ключи сотрутся с этого устройства."))) { Conn.remove(d.cxdel); renderConnect(); } return true; }
   if (d.cxrun) { cxRun(d.cxrun); return true; }
   if (a === "cx-add") { cxAdd(); return true; }
+  if (a === "cx-report") { cxReportPreview(); return true; }
   if (a === "cx-close") { CX.preview = null; renderConnect(); return true; }
   return false;
 }
@@ -1813,6 +1854,8 @@ function events() {
   $("#view").addEventListener("click", chartTip);
   $("#view").addEventListener("mouseleave", () => { const t = $("#chartTip"); if (t) t.hidden = true; });
   $("#view").addEventListener("change", (e) => {
+    if (e.target.dataset.cxtz && CX.report) { CX.report.tz = e.target.value; return; }
+    if (e.target.dataset.cxfile && e.target.files?.[0]) { cxReadReport(e.target.files[0]); e.target.value = ""; return; }
     if (e.target.dataset.cxpick && CX.preview) { CX.preview.items[+e.target.dataset.cxpick].pick = e.target.checked; renderConnect(); return; }
     const files = [...(e.target.files || [])];
     if (!files.length) return;

@@ -540,3 +540,4 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .cx-soon { margin-top: 12px; }
 .cx-table td, .cx-table th { white-space: nowrap; }
 .cx-table tr.muted td { opacity: .55; }
+.cx-page .panel > .hint { margin-top: 10px; }
