@@ -770,3 +770,39 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .lt-setbox input { font-size: 15px !important; }
 @media (min-width: 900px) { .lt-setbox { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; } }
 .lt-res { padding: 18px 16px; }
+/* кнопки периода и переключатели: по ширине текста, с переносом — текст никогда не обрезается */
+.nw-pills { display: flex !important; flex-wrap: wrap; }
+.nw-pills button { flex: 1 1 auto; min-width: max-content; overflow: visible; text-overflow: clip; padding: 8px 12px; }
+/* средняя ширина (планшет, узкое окно): вкладки в одну строку, калькулятор — коротко «Лот», при нехватке места — прокрутка вбок */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .tab-l.has-s { display: none; }
+  .tab-s { display: inline; }
+  .tab { white-space: nowrap; padding: 8px 10px; }
+  .tabs { overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .top .actions { flex: none; }
+}
+/* маленькие телефоны: в шапке только логотип без названия */
+@media (max-width: 380px) {
+  .brand > span:not(.logo):not(.spinner) { display: none !important; }
+  .tab-l, .tab-s { font-size: 9px !important; }
+  .tab-i { width: 36px; padding: 4px 8px; }
+}
+/* планшет / узкое окно (641–1000px): нижняя панель вкладок, как на телефоне */
+@media (min-width: 641px) and (max-width: 1000px) {
+  .tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; gap: 0; overflow: visible;
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
+    border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0 6px; border-radius: 0; background: none !important; color: var(--muted); }
+  .tab-i { display: block; width: 46px; height: 28px; padding: 4px 12px; border-radius: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tab-l, .tab-s { font-size: 11px; font-weight: 600; }
+  .tab.active { color: var(--accent); }
+  .tab.active .tab-i { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .top { justify-content: space-between; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
+  main { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+  .fab { bottom: calc(90px + env(safe-area-inset-bottom)); }
+}
