@@ -719,6 +719,19 @@ function renderStrategy() {
     </div>
   </div>`;
   hydrateThumbs($("#view"));
+  if (r.missing.length && !S.stAutoTried && auth.hasDrive()) { S.stAutoTried = true; stAutoImport(); }
+}
+
+// Картинки, заранее положенные в скрытый лист StrategyImages, грузятся в Drive сами — один раз.
+async function stAutoImport() {
+  try {
+    const files = await api.pendingImages();
+    if (!files.length) return;
+    await stUpload(files, "missing");
+    if (!St.render(S.strategy).missing.length) await api.dropPendingImages();
+  } catch (e) {
+    handleErr(e);
+  }
 }
 
 function renderStrategyEditor() {

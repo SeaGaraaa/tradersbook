@@ -442,3 +442,21 @@ export function driveBlobUrl(id) {
   }
   return blobCache.get(id);
 }
+
+// Картинки стратегии, подготовленные заранее в скрытом листе StrategyImages
+// (A — имя файла, B — тип, C… — base64 кусками). Приложение переносит их в Drive и удаляет лист.
+const PENDING = "StrategyImages";
+export async function pendingImages() {
+  if (!(await sheetTitles()).some((s) => s.title === PENDING)) return [];
+  const r = await json(`${SHEETS}${ID}/values/${encodeURIComponent(`${q(PENDING)}!A1:Z200`)}`);
+  return (r.values || []).filter((v) => v[0] && v[2]).map(([name, type, ...parts]) => {
+    const bin = atob(parts.join(""));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], name, { type: type || "image/png" });
+  });
+}
+export async function dropPendingImages() {
+  const s = (await sheetTitles()).find((x) => x.title === PENDING);
+  if (s) await batch([{ deleteSheet: { sheetId: s.sheetId } }]);
+}
