@@ -250,6 +250,7 @@ export const EN = {
 
   // статистика
   "Статистика": "Statistics",
+  "Открой «Журнал» → «Бэктест», нажми «+», выбери идею и запиши сделку с результатом — здесь появится её статистика по месяцам и дням недели.": "Open “Journal” → “Backtest”, tap “+”, pick an idea and record a trade with a result — its stats by month and weekday will appear here.",
   "Пока нет сделок с датой": "No dated trades yet",
   "Сделок": "Trades",
   "Прибыль по периодам": "Profit by period",

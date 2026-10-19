@@ -489,3 +489,6 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .stats-page .panel { padding: 14px; }
   .zb-val { font-size: 15px; }
 }
+.stats-empty { text-align: center; padding: 40px 24px !important; }
+.stats-empty h3 { font-size: 17px !important; }
+.stats-empty p { max-width: 520px; margin: 8px auto 0; line-height: 1.6; }

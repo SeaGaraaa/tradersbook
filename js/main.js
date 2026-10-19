@@ -482,7 +482,13 @@ function zeroBars(rows, label, short, frac = 1) {
 }
 
 function renderStats() {
-  if (isBT() && !activeIdea()) { $("#view").innerHTML = modeBar() + `<div class="empty">${tr("Пока нет сделок бэктеста с результатом")}</div>`; return; }
+  if (isBT() && !activeIdea()) {
+    $("#view").innerHTML = `<div class="stats-page">${modeBar()}<section class="panel stats-empty">
+      <h3>${tr("Пока нет сделок бэктеста с результатом")}</h3>
+      <p class="muted">${tr("Открой «Журнал» → «Бэктест», нажми «+», выбери идею и запиши сделку с результатом — здесь появится её статистика по месяцам и дням недели.")}</p>
+    </section></div>`;
+    return;
+  }
   const p = period(scoped());
   const T = p.total;
   const WD = LANG === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
