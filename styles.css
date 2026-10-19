@@ -751,3 +751,22 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .nw-group { padding: 12px 14px; }
 }
 @media (min-width: 900px) { .nw-setbox { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 24px; } .nw-setbox .nw-ghead { margin-right: 4px; } }
+
+/* ---------- калькулятор лота: панель по группам, как фильтры новостей ---------- */
+.lt-form { display: flex !important; flex-direction: column; min-width: 0; }
+.lt-form .nw-group { border-left: 0 !important; }
+.lt-form .nw-group > select, .lt-form .nw-group > input { width: 100%; }
+.lt-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.lt-field > span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.lt-form input, .lt-form select { font-size: 17px; font-variant-numeric: tabular-nums; }
+.lt-form .lt-spec input { font-size: 15px; }
+.lt-sub { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: -4px; }
+.lt-inline { position: relative; display: flex; }
+.lt-inline input { flex: 1; min-width: 0; padding-right: 64px; }
+.lt-suffix { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; font-weight: 600; pointer-events: none; }
+.lt-pills button { font-size: 13px; }
+.lt-quick .chip { min-width: 58px; }
+.lt-setbox .lt-row2 { width: 100%; }
+.lt-setbox input { font-size: 15px !important; }
+@media (min-width: 900px) { .lt-setbox { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; } }
+.lt-res { padding: 18px 16px; }

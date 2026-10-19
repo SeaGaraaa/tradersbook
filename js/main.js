@@ -1318,44 +1318,42 @@ function renderLot() {
   const other = LT.otherMode || !syms.includes(Lot.norm(LT.sym));
   const sp = Lot.spec(LT.sym, LT.overrides);
   const unitName = ltUnit(sp?.kind);
-  const seg = (attr, val, opts) => `<div class="seg">${opts.map(([v, l]) => `<button type="button" ${attr}="${v}" class="${val === v ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  const pills = (attr, val, opts) => `<div class="nw-pills lt-pills" style="grid-template-columns: repeat(${opts.length}, minmax(0, 1fr))">${opts.map(([v, l]) => `<button type="button" ${attr}="${v}" class="${String(val) === String(v) ? "on" : ""}">${l}</button>`).join("")}</div>`;
   const num = (k, ph, extra = "") => `<input type="text" inputmode="decimal" data-lt="${k}" value="${esc(LT[k] ?? "")}" placeholder="${esc(ph)}" ${extra}>`;
+  const field = (label, html) => `<label class="lt-field"><span>${label}</span>${html}</label>`;
+  const group = (title, body, right = "", cls = "") => `<div class="nw-group ${cls}"><div class="nw-ghead"><span>${title}</span>${right}</div>${body}</div>`;
+  const pipsLabel = sp?.kind === "fx" || sp?.kind === "metal" ? tr("Пипсы") : tr("Пункты");
   $("#view").innerHTML = `<div class="lt-page">
     <div class="nw-head"><h2>${tr("Калькулятор лота")}</h2><span class="muted">${tr("сколько лотов открыть, чтобы при стопе потерять ровно свой риск")}</span></div>
     <div class="lt-grid">
-      <div class="lt-inputs">
-        <section class="panel lt-card"><h3>${tr("Счёт и риск")}</h3>
-          <div class="lt-row2">
-            <label>${tr("Баланс счёта")}${num("balance", "100000")}</label>
-            <label>${tr("Валюта счёта")}<select data-ltsel="acc">${["USD", "EUR", "GBP"].map((c) => `<option ${LT.acc === c ? "selected" : ""}>${c}</option>`).join("")}</select></label>
-          </div>
-          <div class="lt-label">${tr("Риск на сделку")}</div>
-          <div class="lt-risk">${seg("data-ltrm", LT.riskMode, [["pct", "%"], ["money", LT.acc]])}${num("risk", LT.riskMode === "pct" ? "0.5" : "500")}</div>
-          ${LT.riskMode === "pct" ? `<div class="chips lt-quick">${[0.25, 0.5, 1, 2].map((v) => `<button type="button" class="chip ${+LT.risk === v ? "on" : ""}" data-ltrisk="${v}">${String(v).replace(".", LANG === "en" ? "." : ",")}%</button>`).join("")}</div>` : ""}
-        </section>
-        <section class="panel lt-card"><h3>${tr("Сделка")}</h3>
-          <label>${tr("Инструмент")}<select data-ltsel="symsel">${syms.map((s) => `<option ${Lot.norm(LT.sym) === s ? "selected" : ""}>${s}</option>`).join("")}<option value="__other" ${other ? "selected" : ""}>${tr("Другой…")}</option></select></label>
-          ${other ? `<label>${tr("Символ, как в терминале")}<input type="text" data-lt="sym" data-full="1" value="${esc(LT.sym)}" placeholder="USDMXN, NAS100…" autocapitalize="characters"></label>` : ""}
+      <section class="panel nw-filters lt-form">
+        <div class="nw-fhead"><h3>${tr("Параметры сделки")}</h3><span class="grow"></span>
+          <button type="button" class="link-btn" data-act="lt-clear">${tr("Очистить цены")}</button></div>
+        ${group(tr("Счёт"), `<div class="lt-row2">
+            ${field(tr("Баланс"), num("balance", "100000"))}
+            ${field(tr("Валюта счёта"), `<select data-ltsel="acc">${["USD", "EUR", "GBP"].map((c) => `<option ${LT.acc === c ? "selected" : ""}>${c}</option>`).join("")}</select>`)}
+          </div>`)}
+        ${group(tr("Риск на сделку"), `${pills("data-ltrm", LT.riskMode, [["pct", tr("В процентах")], ["money", tr("В деньгах, {c}", { c: LT.acc })]])}
+          <div class="lt-inline">${num("risk", LT.riskMode === "pct" ? "0.5" : "500")}<span class="lt-suffix">${LT.riskMode === "pct" ? "%" : esc(LT.acc)}</span></div>
+          ${LT.riskMode === "pct" ? `<div class="chips lt-quick">${[0.25, 0.5, 1, 2].map((v) => `<button type="button" class="chip ${+LT.risk === v ? "on" : ""}" data-ltrisk="${v}">${String(v).replace(".", LANG === "en" ? "." : ",")}%</button>`).join("")}</div>` : ""}`)}
+        ${group(tr("Инструмент"), `<select data-ltsel="symsel">${syms.map((s) => `<option ${Lot.norm(LT.sym) === s && !other ? "selected" : ""}>${s}</option>`).join("")}<option value="__other" ${other ? "selected" : ""}>${tr("Другой…")}</option></select>
+          ${other ? field(tr("Символ, как в терминале"), `<input type="text" data-lt="sym" data-full="1" value="${esc(LT.sym)}" placeholder="USDMXN, NAS100…" autocapitalize="characters">`) : ""}
           <details class="lt-spec" ${!sp || sp.custom ? "open" : ""}><summary>${sp ? tr("Спецификация: контракт {c} · {u} {p} · котировка {q}", { c: sp.contract.toLocaleString("ru-RU"), u: unitName, p: sp.pip, q: sp.quote }) : tr("Спецификация не известна — заполни")}${sp?.custom ? ` <span class="nw-badge next">${tr("своя")}</span>` : ""}</summary>
             <div class="hint">${tr("Проверь у своего брокера / проп-компании: терминал → «Обзор рынка» → правый клик по символу → «Спецификация» → «Размер контракта». У индексов и нефти он бывает разным.")}</div>
             <div class="lt-row3">
-              <label>${tr("Размер контракта")}<input type="text" inputmode="decimal" data-lts="contract" value="${esc(sp?.contract ?? "")}"></label>
-              <label>${tr("Размер пипса / пункта")}<input type="text" inputmode="decimal" data-lts="pip" value="${esc(sp?.pip ?? "")}"></label>
-              <label>${tr("Валюта котировки")}<input type="text" data-lts="quote" value="${esc(sp?.quote ?? "")}" placeholder="USD" autocapitalize="characters"></label>
+              ${field(tr("Размер контракта"), `<input type="text" inputmode="decimal" data-lts="contract" value="${esc(sp?.contract ?? "")}">`)}
+              ${field(tr("Размер пипса / пункта"), `<input type="text" inputmode="decimal" data-lts="pip" value="${esc(sp?.pip ?? "")}">`)}
+              ${field(tr("Валюта котировки"), `<input type="text" data-lts="quote" value="${esc(sp?.quote ?? "")}" placeholder="USD" autocapitalize="characters">`)}
             </div>
             ${sp?.custom && sp.preset ? `<button type="button" class="link-btn" data-act="lt-specreset">${tr("Вернуть стандартную")}</button>` : ""}
-          </details>
-          <div class="lt-row2">
-            <label>${tr("Цена входа")}${num("entry", "1.08500")}</label>
-            <label>${tr("Take Profit (не обязательно)")}${num("tp", "")}</label>
-          </div>
-          <div class="lt-label">${tr("Stop Loss")}</div>
-          <div class="lt-risk">${seg("data-ltsm", LT.slMode, [["price", tr("Цена")], ["pips", sp?.kind === "fx" || sp?.kind === "metal" ? tr("Пипсы") : tr("Пункты")]])}
-            ${LT.slMode === "price" ? num("sl", "1.08300") : num("slPips", "20")}</div>
-          <details class="lt-spec"><summary>${tr("Шаг и минимальный лот: {s} / {m}", { s: LT.step, m: LT.min })}</summary>
-            <div class="lt-row2"><label>${tr("Шаг лота")}${num("step", "0.01")}</label><label>${tr("Минимальный лот")}${num("min", "0.01")}</label></div></details>
-        </section>
-      </div>
+          </details>`)}
+        ${group(tr("Цены сделки"), `${field(tr("Цена входа"), num("entry", "1.08500"))}
+          <div class="lt-sub">${tr("Stop Loss")}</div>
+          ${pills("data-ltsm", LT.slMode, [["price", tr("Цена стопа")], ["pips", tr("Расстояние, {u}", { u: pipsLabel.toLowerCase() })]])}
+          ${LT.slMode === "price" ? num("sl", "1.08300") : `<div class="lt-inline">${num("slPips", "20")}<span class="lt-suffix">${pipsLabel.toLowerCase()}</span></div>`}
+          ${field(tr("Take Profit (не обязательно)"), num("tp", ""))}`)}
+        ${group(tr("Лот у брокера"), `<div class="lt-row2">${field(tr("Шаг лота"), num("step", "0.01"))}${field(tr("Минимальный лот"), num("min", "0.01"))}</div>`, "", "nw-setbox lt-setbox")}
+      </section>
       <section class="panel lt-res" id="ltRes"></section>
     </div>
   </div>`;
@@ -1405,6 +1403,7 @@ function lotClick(b) {
   if (d.ltrm) { ltSet({ riskMode: d.ltrm }, true); return true; }
   if (d.ltsm) { ltSet({ slMode: d.ltsm }, true); return true; }
   if (d.ltrisk) { ltSet({ riskMode: "pct", risk: +d.ltrisk }, true); return true; }
+  if (d.act === "lt-clear") { ltSet({ entry: "", sl: "", slPips: "", tp: "" }, true); return true; }
   if (d.act === "lt-specreset") { const o = { ...LT.overrides }; delete o[Lot.norm(LT.sym)]; ltSet({ overrides: o }, true); return true; }
   if (d.ltcopy) { navigator.clipboard?.writeText(d.ltcopy).then(() => toast(tr("Скопировано: {x}", { x: d.ltcopy })), () => {}); return true; }
   return false;
