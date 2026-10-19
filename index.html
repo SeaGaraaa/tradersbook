@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Trader'sBook</title>
+  <meta name="description" content="Trader'sBook — торговый журнал на Google Sheets">
+  <meta name="theme-color" content="#0c0c0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Trader'sBook">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/tb-icon-192.png">
+  <link rel="apple-touch-icon" href="icons/tb-apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // тема и язык до отрисовки — без мигания
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem("tj.theme") === "light" ? "light" : "dark";
+      document.documentElement.lang = localStorage.getItem("tj.lang") === "en" ? "en" : "ru";
+    } catch (e) { document.documentElement.dataset.theme = "dark"; }
+  </script>
+</head>
+<body>
+  <div id="gate" class="gate" hidden></div>
+
+  <div id="app" hidden>
+    <header class="top">
+      <div class="brand"><span class="logo sm"></span><span>Trader'sBook</span><span class="spinner" aria-hidden="true"></span></div>
+      <nav class="tabs">
+        <button class="tab" data-view="journal" data-i18n="Журнал">Журнал</button>
+        <button class="tab" data-view="dashboard">Dashboard</button>
+        <button class="tab" data-view="stats">Stats</button>
+        <button class="tab" data-view="checklist" data-i18n="Чек-лист">Чек-лист</button>
+        <button class="tab" data-view="strategy" data-i18n="Стратегия">Стратегия</button>
+      </nav>
+      <div class="actions">
+        <button class="btn ghost icon lang" id="lang" data-i18n-title="Язык: русский / английский" title="Язык: русский / английский">EN</button>
+        <button class="btn ghost icon" id="theme" data-i18n-title="Тема: светлая / тёмная" title="Тема: светлая / тёмная">
+          <svg viewBox="0 0 24 24" class="i-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg viewBox="0 0 24 24" class="i-moon"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        <button class="btn ghost icon" id="refresh" data-i18n-title="Обновить" title="Обновить" aria-label="Обновить">
+          <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+        <button class="btn ghost icon" id="logout" data-i18n-title="Выйти" title="Выйти" aria-label="Выйти">
+          <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></button>
+      </div>
+    </header>
+    <main id="view"></main>
+    <button id="fab" class="fab" aria-label="Новая сделка">+</button>
+  </div>
+
+  <div id="editor" class="editor" hidden></div>
+  <div id="viewer" class="viewer" hidden></div>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
