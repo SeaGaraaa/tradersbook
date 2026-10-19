@@ -721,3 +721,33 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .lt-row3 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) { .tab-l, .tab-s { font-size: 10px !important; letter-spacing: -.02em; } .tabs { padding-left: 2px; padding-right: 2px; } }
+
+/* ---------- новости: панель фильтров по группам ---------- */
+.nw-filters { gap: 0; padding: 0; overflow: hidden; }
+.nw-fhead { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 12px; flex-wrap: wrap; }
+.nw-fhead h3 { margin: 0; font-size: 15px; }
+.nw-count { font-size: 12px; }
+.nw-group { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--line); }
+.nw-ghead { display: flex; align-items: center; gap: 14px; }
+.nw-ghead > span { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-right: auto; }
+.nw-ghead .link-btn { font-size: 12px; }
+.nw-pills { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+.nw-pills button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 8px 6px; border-radius: 9px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nw-pills button.on { background: var(--accent); color: var(--on-accent); }
+.nw-pills button:not(.on):hover { color: var(--text); background: var(--panel2); }
+.nw-filters .nw-q { width: 100%; min-width: 0; }
+.nw-filters .chip:not(.on) { background: transparent; opacity: .75; }
+.nw-filters .chip:not(.on):hover { opacity: 1; }
+.nw-setbox { background: color-mix(in srgb, var(--panel2) 55%, transparent); font-size: 13px; color: var(--muted); }
+.nw-win { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nw-win input { width: 70px; padding: 6px 8px; }
+@media (min-width: 900px) {
+  .nw-filters { display: grid; grid-template-columns: 1fr 1fr; }
+  .nw-fhead { grid-column: 1 / -1; }
+  .nw-group:nth-of-type(odd) { border-left: 1px solid var(--line); }
+}
+@media (max-width: 520px) {
+  .nw-pills { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nw-group { padding: 12px 14px; }
+}
+@media (min-width: 900px) { .nw-setbox { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 24px; } .nw-setbox .nw-ghead { margin-right: 4px; } }

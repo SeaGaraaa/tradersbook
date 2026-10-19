@@ -1180,21 +1180,32 @@ function renderNews() {
     <div id="nwLive">${newsLive()}</div>
     ${newsErr ? `<div class="panel cx-msg">${esc(newsErr)}</div>` : ""}
     <section class="panel nw-filters">
-      <div class="nw-frow"><span class="nw-flabel">${tr("Влияние")}</span>
-        ${News.IMPACTS.map((i) => chip(f.impact.includes(i), `data-nwimp="${i}"`, `<span class="imp-dot"></span>${tr(IMP_RU[i])}`, "imp-chip imp-" + i.toLowerCase())).join("")}</div>
-      <div class="nw-frow"><span class="nw-flabel">${tr("Валюты")}</span>
-        ${News.CURRENCIES.map((c) => chip(f.cur.includes(c), `data-nwcur="${c}"`, c === "All" ? tr("Все страны") : c)).join("")}
-        <span class="nw-fsep"></span>
-        ${mine.length ? chip(false, 'data-nwmine="1"', tr("Мои активы: {c}", { c: mine.join(", ") }), "accent") : ""}
-        ${chip(false, 'data-nwall="1"', tr("Все"))}</div>
-      <div class="nw-frow"><span class="nw-flabel">${tr("Тип")}</span>
-        ${News.TYPES.map((k) => chip((f.types || News.TYPES).includes(k), `data-nwtype="${k}"`, tr(News.TYPE_RU[k]))).join("")}
-        <span class="nw-fsep"></span>${chip(false, 'data-nwtypeall="1"', tr("Все"))}</div>
-      <div class="nw-frow"><span class="nw-flabel">${tr("Период")}</span>
-        <div class="seg">${News.RANGES.map((r) => `<button type="button" data-nwrange="${r}" class="${f.range === r ? "on" : ""}">${tr(RANGE_RU[r])}</button>`).join("")}</div>
-        <input type="search" class="nw-q" data-nwq="1" placeholder="${tr("Поиск: CPI, NFP, ставка…")}" value="${esc(f.q)}"></div>
-      <div class="nw-frow nw-set"><label>${tr("Опасное окно")} <input type="number" min="0" max="120" step="5" data-nwwin="1" value="${esc(f.window)}"> ${tr("мин до и после сильной новости")}</label>
-        ${"Notification" in window ? `<label class="nw-check"><input type="checkbox" data-nwnotify="1" ${f.notify ? "checked" : ""}> ${tr("Напоминать перед сильной новостью")}</label>` : ""}</div>
+      <div class="nw-fhead"><h3>${tr("Фильтры")}</h3><span class="muted nw-count">${tr("Показано: {n}", { n: list.length })}</span><span class="grow"></span>
+        <button type="button" class="link-btn" data-nwreset="1">${tr("Сбросить фильтры")}</button></div>
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Период")}</span></div>
+        <div class="nw-pills">${News.RANGES.map((r) => `<button type="button" data-nwrange="${r}" class="${f.range === r ? "on" : ""}">${tr(RANGE_RU[r])}</button>`).join("")}</div>
+        <input type="search" class="nw-q" data-nwq="1" placeholder="${tr("Поиск: CPI, NFP, ставка…")}" value="${esc(f.q)}">
+      </div>
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Влияние")}</span><button type="button" class="link-btn" data-nwimpall="1">${tr("Все")}</button></div>
+        <div class="chips">${News.IMPACTS.map((i) => chip(f.impact.includes(i), `data-nwimp="${i}"`, `<span class="imp-dot"></span>${tr(IMP_RU[i])}`, "imp-chip imp-" + i.toLowerCase())).join("")}</div>
+      </div>
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Валюты")}</span>
+          ${mine.length ? `<button type="button" class="link-btn" data-nwmine="1">${tr("Мои активы: {c}", { c: mine.join(", ") })}</button>` : ""}
+          <button type="button" class="link-btn" data-nwall="1">${tr("Все")}</button></div>
+        <div class="chips">${News.CURRENCIES.filter((c) => c !== "All").map((c) => chip(f.cur.includes(c), `data-nwcur="${c}"`, c)).join("")}</div>
+      </div>
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Тип события")}</span><button type="button" class="link-btn" data-nwtypeall="1">${tr("Все")}</button></div>
+        <div class="chips">${News.TYPES.map((k) => chip((f.types || News.TYPES).includes(k), `data-nwtype="${k}"`, tr(News.TYPE_RU[k]))).join("")}</div>
+      </div>
+      <div class="nw-group nw-setbox">
+        <div class="nw-ghead"><span>${tr("Предупреждение")}</span></div>
+        <label class="nw-win">${tr("Опасное окно")} <input type="number" min="0" max="120" step="5" data-nwwin="1" value="${esc(f.window)}"> ${tr("мин до и после сильной новости")}</label>
+        ${"Notification" in window ? `<label class="nw-check"><input type="checkbox" data-nwnotify="1" ${f.notify ? "checked" : ""}> ${tr("Напоминать перед сильной новостью")}</label>` : ""}
+      </div>
     </section>
     <section class="panel nw-list">
       <div class="nw-row nw-thead"><div>${tr("Время")}</div><div>${tr("Валюта")}</div><div>${tr("Влияние")}</div><div>${tr("Событие")}</div><div>${tr("Прогноз")}</div><div>${tr("Пред.")}</div></div>
@@ -1223,6 +1234,8 @@ function newsClick(b) {
   if (d.nwrange) { newsSet({ range: d.nwrange }); return true; }
   if (d.nwtype) { const t = tog(f.types || News.TYPES, d.nwtype); newsSet({ types: t.length === News.TYPES.length ? null : t }); return true; }
   if (d.nwtypeall) { newsSet({ types: null }); return true; }
+  if (d.nwimpall) { newsSet({ impact: News.IMPACTS.slice() }); return true; }
+  if (d.nwreset) { newsSet({ cur: News.CURRENCIES.slice(), impact: News.IMPACTS.slice(), types: null, range: "week", q: "" }); return true; }
   return false;
 }
 

@@ -65,7 +65,7 @@ export function visible(events = DATA.events, f = F, now = Date.now()) {
   const [a, b] = bounds(f.range, now);
   const q = f.q.trim().toLowerCase();
   const types = f.types || TYPES; // null — все типы (и новые, если появятся)
-  let list = events.filter((e) => f.cur.includes(e.cur) && f.impact.includes(e.impact) && types.includes(typeOf(e)) && e.ms >= a && e.ms < b && (!q || e.title.toLowerCase().includes(q)));
+  let list = events.filter((e) => (e.cur === "All" || f.cur.includes(e.cur)) && f.impact.includes(e.impact) && types.includes(typeOf(e)) && e.ms >= a && e.ms < b && (!q || e.title.toLowerCase().includes(q)));
   if (f.range === "week") {
     // «Неделя» — текущая неделя с воскресенья, как на Forex Factory
     const s = new Date(now); s.setHours(0, 0, 0, 0); s.setDate(s.getDate() - s.getDay());

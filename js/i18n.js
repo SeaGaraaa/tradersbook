@@ -485,4 +485,9 @@ export const EN = {
   "Стоимость пункта посчитана по цене входа {p}.": "Point value is calculated from the entry price {p}.",
   "Используется твоя спецификация символа.": "Your custom symbol specification is used.",
   "Скопировано: {x}": "Copied: {x}",
+  "Фильтры": "Filters",
+  "Показано: {n}": "Shown: {n}",
+  "Сбросить фильтры": "Reset filters",
+  "Тип события": "Event type",
+  "Предупреждение": "Warning",
 };
