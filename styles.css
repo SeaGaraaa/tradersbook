@@ -671,3 +671,53 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 @media (min-width: 721px) { .nw-row { grid-template-columns: 64px 70px 104px 1fr 92px 92px; } }
 .modebar { justify-content: center; }
 @media (min-width: 641px) { .summary { margin-left: auto; margin-right: auto; } }
+
+/* ---------- калькулятор лота ---------- */
+.tab-s { display: none; }
+.lt-page { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.lt-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; align-items: start; }
+.lt-inputs { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.lt-card { display: flex; flex-direction: column; gap: 10px; }
+.lt-card h3 { margin: 0 0 2px; }
+.lt-card label, .lt-spec label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; min-width: 0; }
+.lt-card input, .lt-card select { font-size: 17px; font-variant-numeric: tabular-nums; }
+.lt-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lt-row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+.lt-label { font-size: 13px; font-weight: 600; margin-bottom: -4px; }
+.lt-risk { display: flex; gap: 8px; align-items: stretch; }
+.lt-risk .seg { flex: none; }
+.lt-risk .seg button { min-width: 52px; }
+.lt-risk input { flex: 1; min-width: 0; }
+.lt-quick { margin-top: -2px; }
+.lt-spec { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.lt-spec summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.lt-spec .hint { margin: 8px 0 0; }
+.lt-res { position: sticky; top: calc(var(--top-h, 60px) + 12px); text-align: center; display: flex; flex-direction: column; gap: 10px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.lt-cap { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.lt-cap .long { color: var(--win); } .lt-cap .short { color: var(--lose); }
+.lt-big { font-size: 56px; font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.lt-big.neg { color: var(--lose); }
+.lt-copy { align-self: center; }
+.lt-need { color: var(--muted); font-size: 14px; }
+.lt-kvs { text-align: left; border-top: 1px solid var(--line); }
+.lt-kv { display: flex; justify-content: space-between; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.lt-kv span { color: var(--muted); }
+.lt-kv b { font-variant-numeric: tabular-nums; text-align: right; }
+.lt-kv b.neg { color: var(--lose); } .lt-kv b.pos { color: var(--win); }
+.lt-alert { text-align: left; font-size: 13px; padding: 9px 11px; border-radius: 10px; font-weight: 600; }
+.lt-alert.warn { background: color-mix(in srgb, var(--imp-med) 14%, transparent); color: var(--imp-med); }
+.lt-alert.bad { background: var(--imp-high-bg); color: var(--imp-high); }
+.lt-res .hint { text-align: left; margin: 0; font-size: 12px; }
+@media (max-width: 820px) {
+  .lt-grid { grid-template-columns: 1fr; }
+  .lt-res { position: static; order: -1; }
+}
+@media (max-width: 640px) {
+  .tab-l.has-s { display: none; }
+  .tab-s { display: block; font-size: 10.5px; font-weight: 600; }
+  .tab.active .tab-s { font-weight: 700; }
+  .tab-i { width: 42px; padding: 4px 10px; }
+  .lt-big { font-size: 48px; }
+  .lt-row3 { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) { .tab-l, .tab-s { font-size: 10px !important; letter-spacing: -.02em; } .tabs { padding-left: 2px; padding-right: 2px; } }

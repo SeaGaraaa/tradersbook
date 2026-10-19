@@ -9,6 +9,7 @@ import * as St from "./strategy.js";
 import * as SB from "./stbuilder.js";
 import * as Conn from "./connect.js";
 import * as News from "./news.js";
+import * as Lot from "./lot.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
@@ -30,7 +31,7 @@ const S = {
   mode: lsGet("tj.mode") === "bt" ? "bt" : "live", // live — реальный счёт, bt — бэктест
   books: { live: { trades: [], sheetId: null }, bt: null },
   lists: { poi: [], entry: [], idea: [], pair: [], session: [] },
-  view: ["journal", "dashboard", "stats", "checklist", "strategy", "news"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
+  view: ["journal", "dashboard", "stats", "checklist", "strategy", "news", "lot"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
   run: null, // текущий (несохранённый) чек-лист на вкладке «Чек-лист»
   runs: [], runsSheetId: null, // сохранённые чек-листы (лист Checklists)
   clDraft: null, // правка шаблона чек-листа
@@ -139,6 +140,7 @@ async function reload() {
     S.strategyData = data.strategyData || "";
     CL.load(data.lists.checklist);
     if (data.lists.news) News.setFilter(data.lists.news);
+    if (data.lists.lot) ltLoad(data.lists.lot);
     render();
     return true;
   } catch (e) {
@@ -185,7 +187,7 @@ function pickIdea(name) {
 }
 
 function render() {
-  document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect"].includes(S.view));
+  document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect", "lot"].includes(S.view));
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === S.view));
   $("#apiBtn")?.classList.toggle("on", S.view === "connect");
   $("#fab").hidden = S.view !== "journal";
@@ -195,6 +197,7 @@ function render() {
   else if (S.view === "strategy") renderStrategy();
   else if (S.view === "connect") renderConnect();
   else if (S.view === "news") renderNews();
+  else if (S.view === "lot") renderLot();
   else renderStats();
   const top = $("#ideaTop");
   if (top) top.oninput = (e) => pickIdea(e.target.value);
@@ -1262,6 +1265,160 @@ function newsNotify(now) {
   }
 }
 
+// ---------------- калькулятор лота ----------------
+const LT_DEFAULT = { balance: "", acc: "USD", riskMode: "pct", risk: 1, sym: "", entry: "", sl: "", slPips: "", slMode: "price", tp: "", step: 0.01, min: 0.01, overrides: {} };
+let LT = (() => { try { return { ...LT_DEFAULT, ...JSON.parse(lsGet("tj.lot") || "{}") }; } catch { return { ...LT_DEFAULT }; } })();
+let ltSaveT = 0, ltFx = null;
+// В таблицу — только постоянное (баланс, риск, свои спецификации); цены сделки живут на устройстве.
+const LT_KEEP = ["balance", "acc", "riskMode", "risk", "sym", "slMode", "step", "min", "overrides"];
+
+function ltLoad(json) {
+  try { const d = JSON.parse(json || "null"); if (d) LT = { ...LT, ...d }; } catch { /* испорчено — оставить */ }
+}
+function ltSet(patch, full = false) {
+  LT = { ...LT, ...patch };
+  lsSet("tj.lot", JSON.stringify(LT));
+  if (Object.keys(patch).some((k) => LT_KEEP.includes(k))) {
+    clearTimeout(ltSaveT);
+    const keep = Object.fromEntries(LT_KEEP.map((k) => [k, LT[k]]));
+    ltSaveT = setTimeout(() => api.saveLotSettings(JSON.stringify(keep)).catch(() => {}), 1500);
+  }
+  if (full) renderLot(); else ltResult();
+}
+
+// «пипс» для валют и металлов, «пункт» для индексов и остального; с окончанием по числу
+function ltUnit(kind, n = 1) {
+  const pip = kind === "fx" || kind === "metal";
+  if (LANG === "en") return pip ? (n === 1 ? "pip" : "pips") : (n === 1 ? "point" : "points");
+  const f = pip ? ["пипс", "пипса", "пипсов"] : ["пункт", "пункта", "пунктов"];
+  const k = Math.abs(n) % 100, d = k % 10;
+  if (!Number.isInteger(n)) return f[1];
+  return k > 10 && k < 20 ? f[2] : d === 1 ? f[0] : d >= 2 && d <= 4 ? f[1] : f[2];
+}
+const ltSyms = () => [...new Set([...S.lists.pair.map(Lot.norm), ...Lot.COMMON])].filter(Boolean);
+const money = (x) => (Number.isFinite(x) ? x.toLocaleString(LANG === "en" ? "en-US" : "ru-RU", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) : "—");
+const cur = () => ({ USD: "$", EUR: "€", GBP: "£" })[LT.acc] || LT.acc + " ";
+
+function renderLot() {
+  if (!LT.sym && !LT.otherMode) LT.sym = ltSyms()[0] || "EURUSD";
+  const syms = ltSyms();
+  const other = LT.otherMode || !syms.includes(Lot.norm(LT.sym));
+  const sp = Lot.spec(LT.sym, LT.overrides);
+  const unitName = ltUnit(sp?.kind);
+  const seg = (attr, val, opts) => `<div class="seg">${opts.map(([v, l]) => `<button type="button" ${attr}="${v}" class="${val === v ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  const num = (k, ph, extra = "") => `<input type="text" inputmode="decimal" data-lt="${k}" value="${esc(LT[k] ?? "")}" placeholder="${esc(ph)}" ${extra}>`;
+  $("#view").innerHTML = `<div class="lt-page">
+    <div class="nw-head"><h2>${tr("Калькулятор лота")}</h2><span class="muted">${tr("сколько лотов открыть, чтобы при стопе потерять ровно свой риск")}</span></div>
+    <div class="lt-grid">
+      <div class="lt-inputs">
+        <section class="panel lt-card"><h3>${tr("Счёт и риск")}</h3>
+          <div class="lt-row2">
+            <label>${tr("Баланс счёта")}${num("balance", "100000")}</label>
+            <label>${tr("Валюта счёта")}<select data-ltsel="acc">${["USD", "EUR", "GBP"].map((c) => `<option ${LT.acc === c ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+          </div>
+          <div class="lt-label">${tr("Риск на сделку")}</div>
+          <div class="lt-risk">${seg("data-ltrm", LT.riskMode, [["pct", "%"], ["money", LT.acc]])}${num("risk", LT.riskMode === "pct" ? "0.5" : "500")}</div>
+          ${LT.riskMode === "pct" ? `<div class="chips lt-quick">${[0.25, 0.5, 1, 2].map((v) => `<button type="button" class="chip ${+LT.risk === v ? "on" : ""}" data-ltrisk="${v}">${String(v).replace(".", LANG === "en" ? "." : ",")}%</button>`).join("")}</div>` : ""}
+        </section>
+        <section class="panel lt-card"><h3>${tr("Сделка")}</h3>
+          <label>${tr("Инструмент")}<select data-ltsel="symsel">${syms.map((s) => `<option ${Lot.norm(LT.sym) === s ? "selected" : ""}>${s}</option>`).join("")}<option value="__other" ${other ? "selected" : ""}>${tr("Другой…")}</option></select></label>
+          ${other ? `<label>${tr("Символ, как в терминале")}<input type="text" data-lt="sym" data-full="1" value="${esc(LT.sym)}" placeholder="USDMXN, NAS100…" autocapitalize="characters"></label>` : ""}
+          <details class="lt-spec" ${!sp || sp.custom ? "open" : ""}><summary>${sp ? tr("Спецификация: контракт {c} · {u} {p} · котировка {q}", { c: sp.contract.toLocaleString("ru-RU"), u: unitName, p: sp.pip, q: sp.quote }) : tr("Спецификация не известна — заполни")}${sp?.custom ? ` <span class="nw-badge next">${tr("своя")}</span>` : ""}</summary>
+            <div class="hint">${tr("Проверь у своего брокера / проп-компании: терминал → «Обзор рынка» → правый клик по символу → «Спецификация» → «Размер контракта». У индексов и нефти он бывает разным.")}</div>
+            <div class="lt-row3">
+              <label>${tr("Размер контракта")}<input type="text" inputmode="decimal" data-lts="contract" value="${esc(sp?.contract ?? "")}"></label>
+              <label>${tr("Размер пипса / пункта")}<input type="text" inputmode="decimal" data-lts="pip" value="${esc(sp?.pip ?? "")}"></label>
+              <label>${tr("Валюта котировки")}<input type="text" data-lts="quote" value="${esc(sp?.quote ?? "")}" placeholder="USD" autocapitalize="characters"></label>
+            </div>
+            ${sp?.custom && sp.preset ? `<button type="button" class="link-btn" data-act="lt-specreset">${tr("Вернуть стандартную")}</button>` : ""}
+          </details>
+          <div class="lt-row2">
+            <label>${tr("Цена входа")}${num("entry", "1.08500")}</label>
+            <label>${tr("Take Profit (не обязательно)")}${num("tp", "")}</label>
+          </div>
+          <div class="lt-label">${tr("Stop Loss")}</div>
+          <div class="lt-risk">${seg("data-ltsm", LT.slMode, [["price", tr("Цена")], ["pips", sp?.kind === "fx" || sp?.kind === "metal" ? tr("Пипсы") : tr("Пункты")]])}
+            ${LT.slMode === "price" ? num("sl", "1.08300") : num("slPips", "20")}</div>
+          <details class="lt-spec"><summary>${tr("Шаг и минимальный лот: {s} / {m}", { s: LT.step, m: LT.min })}</summary>
+            <div class="lt-row2"><label>${tr("Шаг лота")}${num("step", "0.01")}</label><label>${tr("Минимальный лот")}${num("min", "0.01")}</label></div></details>
+        </section>
+      </div>
+      <section class="panel lt-res" id="ltRes"></section>
+    </div>
+  </div>`;
+  ltResult();
+  if (!ltFx || ltFx.acc !== LT.acc) Lot.rates(LT.acc).then((r) => { ltFx = r; ltResult(); });
+}
+
+function ltResult() {
+  const box = $("#ltRes");
+  if (!box) return;
+  const r = Lot.calc(LT, ltFx);
+  const sp = r.spec;
+  const unit = ltUnit(sp?.kind);
+  const need = [];
+  if (r.errors.includes("spec")) need.push(tr("спецификацию инструмента"));
+  if (r.errors.includes("risk")) need.push(LT.riskMode === "pct" ? tr("баланс и риск") : tr("риск"));
+  if (r.errors.includes("sl")) need.push(LT.slMode === "price" ? tr("цену входа и стоп") : tr("стоп в пипсах"));
+  if (r.errors.includes("fx")) need.push(ltFx ? tr("курс {q} — укажи цену входа или проверь валюту котировки", { q: sp?.quote }) : tr("курс валют (загружается…)"));
+  if (need.length) {
+    box.innerHTML = `<div class="lt-big muted">—</div><div class="lt-need">${tr("Чтобы посчитать, укажи: {x}", { x: need.join(", ") })}</div>`;
+    return;
+  }
+  const pct = r.actualPct;
+  const lvl = pct > 2 ? "bad" : pct > 1 ? "warn" : "ok";
+  const row = (k, v, cls = "") => `<div class="lt-kv"><span>${k}</span><b class="${cls}">${v}</b></div>`;
+  box.innerHTML = `
+    <div class="lt-cap">${tr("Лот")}${r.dir ? ` · <span class="${r.dir > 0 ? "long" : "short"}">${r.dir > 0 ? "Long" : "Short"}</span>` : ""}</div>
+    <div class="lt-big ${r.belowMin ? "neg" : ""}">${r.lots.toFixed(r.dec)}</div>
+    <button type="button" class="btn ghost sm lt-copy" data-ltcopy="${r.lots.toFixed(r.dec)}">${tr("Скопировать")}</button>
+    ${r.belowMin ? `<div class="lt-alert bad">${tr("Меньше минимального лота {m}: с таким стопом риск не уложится. Сократи стоп или подними риск.", { m: r.min })}</div>` : ""}
+    <div class="lt-kvs">
+      ${row(tr("Риск при стопе"), `${cur()}${money(r.actual)} · ${fmtNum(pct, 2)}%`, lvl === "ok" ? "" : "neg")}
+      ${row(tr("Стоп"), `${fmtNum(Math.round(r.pips * 10) / 10, Number.isInteger(Math.round(r.pips * 10) / 10) ? 0 : 1)} ${ltUnit(sp.kind, Math.round(r.pips * 10) / 10)}`)}
+      ${row(tr("1 {u} на 1 лот", { u: unit }), `${cur()}${money(r.pipValue)}`)}
+      ${row(tr("1 {u} на этот лот", { u: unit }), `${cur()}${money(r.pipValue * r.lots)}`)}
+      ${r.tp ? (r.tp.ok ? row(tr("RR / прибыль на тейке"), `1:${fmtNum(r.tp.rr, 2)} · ${cur()}${money(r.tp.profit)}`, "pos") : row("Take Profit", tr("с другой стороны от входа"), "neg")) : ""}
+    </div>
+    ${lvl !== "ok" ? `<div class="lt-alert ${lvl}">${lvl === "bad" ? tr("Риск больше 2% на сделку — так счёт проп-компании сливается за несколько стопов.") : tr("Риск больше 1% на сделку. Проверь дневной лимит убытка своей проп-компании.")}</div>` : ""}
+    ${r.raw - r.lots > 1e-9 ? `<div class="hint">${tr("Лот округлён вниз до шага {s}, чтобы не превысить риск (точно было бы {x}).", { s: LT.step, x: fmtNum(r.raw, 3) })}</div>` : ""}
+    ${r.conv.how === "fx" ? `<div class="hint">${tr("Курс {q}→{a}: {k} (ECB, {d}).", { q: sp.quote, a: LT.acc, k: fmtNum(r.conv.k, 5), d: esc(ltFx?.date || "") })}</div>` : ""}
+    ${r.conv.how === "price" ? `<div class="hint">${tr("Стоимость пункта посчитана по цене входа {p}.", { p: LT.entry })}</div>` : ""}
+    ${sp.custom ? `<div class="hint">${tr("Используется твоя спецификация символа.")}</div>` : ""}`;
+}
+
+function lotClick(b) {
+  const d = b.dataset;
+  if (d.ltrm) { ltSet({ riskMode: d.ltrm }, true); return true; }
+  if (d.ltsm) { ltSet({ slMode: d.ltsm }, true); return true; }
+  if (d.ltrisk) { ltSet({ riskMode: "pct", risk: +d.ltrisk }, true); return true; }
+  if (d.act === "lt-specreset") { const o = { ...LT.overrides }; delete o[Lot.norm(LT.sym)]; ltSet({ overrides: o }, true); return true; }
+  if (d.ltcopy) { navigator.clipboard?.writeText(d.ltcopy).then(() => toast(tr("Скопировано: {x}", { x: d.ltcopy })), () => {}); return true; }
+  return false;
+}
+
+// Ввод: числа принимают и запятую.
+function lotInput(t) {
+  const v = t.value.replace(",", ".").trim();
+  if (t.dataset.lt) { ltSet({ [t.dataset.lt]: t.dataset.lt === "sym" ? v.toUpperCase() : v }); if (t.dataset.full) ltResultSpecSoon(); return true; }
+  if (t.dataset.lts) {
+    const s = Lot.norm(LT.sym), cur0 = Lot.spec(LT.sym, LT.overrides) || {};
+    const o = { contract: cur0.contract, pip: cur0.pip, quote: cur0.quote, ...LT.overrides[s] };
+    o[t.dataset.lts] = t.dataset.lts === "quote" ? v.toUpperCase() : +v;
+    ltSet({ overrides: { ...LT.overrides, [s]: o } });
+    return true;
+  }
+  return false;
+}
+let ltSpecT = 0;
+function ltResultSpecSoon() { clearTimeout(ltSpecT); ltSpecT = setTimeout(() => { const a = document.activeElement; const pos = a?.selectionStart; renderLot(); const el = $('[data-lt="sym"]'); if (el && a?.dataset.lt === "sym") { el.focus(); el.setSelectionRange(pos, pos); } }, 600); }
+
+function lotChange(t) {
+  if (t.dataset.ltsel === "acc") { ltSet({ acc: t.value }, true); return true; }
+  if (t.dataset.ltsel === "symsel") { ltSet(t.value === "__other" ? { sym: "", otherMode: true, entry: "", sl: "", tp: "" } : { sym: t.value, otherMode: false, entry: "", sl: "", tp: "" }, true); return true; }
+  return false;
+}
+
 function renderStrategyEditor() {
   const preview = S.stPreview;
   const r = preview ? St.render(S.stEdit) : null;
@@ -1989,6 +2146,7 @@ function events() {
     if (btn && S.view === "strategy" && strategyClick(btn)) return;
     if (btn && S.view === "connect" && connectClick(btn)) return;
     if (btn && S.view === "news" && newsClick(btn)) return;
+    if (btn && S.view === "lot" && lotClick(btn)) return;
     if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
     const toc = e.target.closest("[data-sttoc]");
     if (toc) { e.preventDefault(); document.getElementById(toc.dataset.sttoc)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
@@ -2005,6 +2163,7 @@ function events() {
     if (e.target.dataset.rnote && S.run) { S.run.note = e.target.value; saveRun(); }
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
     if (e.target.dataset.cxf) { CX.form[e.target.dataset.cxf] = e.target.value; return; }
+    if (S.view === "lot" && lotInput(e.target)) return;
     if (e.target.dataset.nwq != null) {
       const pos = e.target.selectionStart;
       newsSet({ q: e.target.value });
@@ -2018,6 +2177,7 @@ function events() {
   $("#view").addEventListener("click", chartTip);
   $("#view").addEventListener("mouseleave", () => { const t = $("#chartTip"); if (t) t.hidden = true; });
   $("#view").addEventListener("change", (e) => {
+    if (S.view === "lot" && lotChange(e.target)) return;
     if (e.target.dataset.nwwin) { newsSet({ window: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) }); return; }
     if (e.target.dataset.nwnotify) {
       if (!e.target.checked) { newsSet({ notify: false }); return; }

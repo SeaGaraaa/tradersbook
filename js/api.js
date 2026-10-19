@@ -93,7 +93,7 @@ export async function loadAll() {
   const lastCol = (b) => String.fromCharCode(64 + b.ncols);
   const ranges = [`${q(BOOKS.live.title)}!A1:${lastCol(BOOKS.live)}`];
   if (has(CONFIG.dashboardSheet)) ranges.push(`${D}!H9:H17`, `${D}!H21:H23`);
-  if (has(CONFIG.listsSheet)) ranges.push(`${q(CONFIG.listsSheet)}!A1:G`);
+  if (has(CONFIG.listsSheet)) ranges.push(`${q(CONFIG.listsSheet)}!A1:H`);
   if (has(BOOKS.bt.title)) ranges.push(`${q(BOOKS.bt.title)}!A1:${lastCol(BOOKS.bt)}`);
   if (has(CONFIG.checklistsSheet)) ranges.push(`${q(CONFIG.checklistsSheet)}!A1:I`);
   if (has(CONFIG.strategySheet)) ranges.push(`${q(CONFIG.strategySheet)}!A2:B200`);
@@ -110,7 +110,7 @@ export async function loadAll() {
   if (!js) throw new Error(`Нет листа ${BOOKS.live.title}`);
   const bs = sheet(BOOKS.bt.title);
 
-  const lists = { poi: [], entry: [], idea: [], pair: [], tf: [], checklist: "", news: "" };
+  const lists = { poi: [], entry: [], idea: [], pair: [], tf: [], checklist: "", news: "", lot: "" };
   for (const d of sheet(CONFIG.dashboardSheet)?.data || []) {
     const vals = (d.rowData || []).map((r) => String(cellValue(r.values?.[0])).trim()).filter(Boolean);
     if (d.startRow === 8) lists.poi = vals;
@@ -128,6 +128,7 @@ export async function loadAll() {
     lists.tf = col(4);
     lists.checklist = String(cellValue(rows[0]?.values?.[5]) || ""); // F2 — чек-лист (JSON)
     lists.news = String(cellValue(rows[0]?.values?.[6]) || ""); // G2 — фильтр новостей (JSON)
+    lists.lot = String(cellValue(rows[0]?.values?.[7]) || ""); // H2 — калькулятор лота (JSON)
   }
   const cs = sheet(CONFIG.checklistsSheet);
   const runs = { sheetId: cs?.properties.sheetId ?? null, list: [] };
@@ -484,5 +485,16 @@ export async function saveNewsFilter(json) {
   await post(`${SHEETS}${ID}/values:batchUpdate`, {
     valueInputOption: "RAW",
     data: [{ range: `${q(CONFIG.listsSheet)}!G1:G2`, values: [["News filter (правится в приложении)"], [json]] }],
+  });
+}
+
+// Настройки калькулятора лота (Lists!H2, JSON): баланс, риск, свои спецификации символов.
+export async function saveLotSettings(json) {
+  if (!(await sheetTitles()).some((s) => s.title === CONFIG.listsSheet)) {
+    await batch([{ addSheet: { properties: { title: CONFIG.listsSheet } } }]);
+  }
+  await post(`${SHEETS}${ID}/values:batchUpdate`, {
+    valueInputOption: "RAW",
+    data: [{ range: `${q(CONFIG.listsSheet)}!H1:H2`, values: [["Lot calculator (правится в приложении)"], [json]] }],
   });
 }
