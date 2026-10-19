@@ -420,4 +420,16 @@ export const EN = {
   "Браузер не разрешил уведомления": "The browser didn’t allow notifications",
   "API: биржи и торговые счета": "API: exchanges and trading accounts",
   "биржи и торговые счета": "exchanges and trading accounts",
+  // типы новостей
+  "Тип": "Type",
+  "Рост экономики": "Growth",
+  "Инфляция": "Inflation",
+  "Занятость": "Employment",
+  "Центробанк": "Central Bank",
+  "Облигации": "Bonds",
+  "Жильё": "Housing",
+  "Опросы потребителей": "Consumer Surveys",
+  "Опросы бизнеса": "Business Surveys",
+  "Выступления": "Speeches",
+  "Прочее": "Misc",
 };

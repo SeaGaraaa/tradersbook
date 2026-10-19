@@ -1164,7 +1164,7 @@ function renderNews() {
     return head + `<div class="${cls}">
       <div class="nw-time">${e.exact ? hm(e.ms) : esc(e.label || tr("весь день"))}</div>
       <div class="nw-cur">${esc(e.cur)}</div>
-      <div class="nw-imp" title="${tr(IMP_RU[e.impact] || e.impact)}"><span class="imp-dot"></span><span class="imp-txt">${tr(IMP_RU[e.impact] || e.impact)}</span></div>
+      <div class="nw-imp" title="${tr(IMP_RU[e.impact] || e.impact)} · ${tr(News.TYPE_RU[News.typeOf(e)])}"><span class="imp-dot"></span><span class="imp-txt">${tr(IMP_RU[e.impact] || e.impact)}</span></div>
       <div class="nw-title"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a> ${status}</div>
       <div class="nw-num"><span class="nw-k">${tr("Прогноз")}</span>${esc(e.forecast || "—")}</div>
       <div class="nw-num"><span class="nw-k">${tr("Пред.")}</span>${esc(e.previous || "—")}</div>
@@ -1184,6 +1184,9 @@ function renderNews() {
         <span class="nw-fsep"></span>
         ${mine.length ? chip(false, 'data-nwmine="1"', tr("Мои активы: {c}", { c: mine.join(", ") }), "accent") : ""}
         ${chip(false, 'data-nwall="1"', tr("Все"))}</div>
+      <div class="nw-frow"><span class="nw-flabel">${tr("Тип")}</span>
+        ${News.TYPES.map((k) => chip((f.types || News.TYPES).includes(k), `data-nwtype="${k}"`, tr(News.TYPE_RU[k]))).join("")}
+        <span class="nw-fsep"></span>${chip(false, 'data-nwtypeall="1"', tr("Все"))}</div>
       <div class="nw-frow"><span class="nw-flabel">${tr("Период")}</span>
         <div class="seg">${News.RANGES.map((r) => `<button type="button" data-nwrange="${r}" class="${f.range === r ? "on" : ""}">${tr(RANGE_RU[r])}</button>`).join("")}</div>
         <input type="search" class="nw-q" data-nwq="1" placeholder="${tr("Поиск: CPI, NFP, ставка…")}" value="${esc(f.q)}"></div>
@@ -1215,6 +1218,8 @@ function newsClick(b) {
   if (d.nwmine) { newsSet({ cur: News.currenciesOf(S.lists.pair) }); return true; }
   if (d.nwall) { newsSet({ cur: News.CURRENCIES.slice() }); return true; }
   if (d.nwrange) { newsSet({ range: d.nwrange }); return true; }
+  if (d.nwtype) { const t = tog(f.types || News.TYPES, d.nwtype); newsSet({ types: t.length === News.TYPES.length ? null : t }); return true; }
+  if (d.nwtypeall) { newsSet({ types: null }); return true; }
   return false;
 }
 

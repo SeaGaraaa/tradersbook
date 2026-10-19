@@ -668,3 +668,4 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .btn.icon.api-btn { width: auto; min-width: 44px; padding: 0 10px; }
 @media (min-width: 641px) { .summary { max-width: 520px; } }
 .day-group > .card::before { top: 16px; bottom: 16px; opacity: .75; }
+@media (min-width: 721px) { .nw-row { grid-template-columns: 64px 70px 104px 1fr 92px 92px; } }

@@ -6,7 +6,7 @@ export const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF
 export const IMPACTS = ["High", "Medium", "Low", "Holiday"];
 export const RANGES = ["today", "tomorrow", "week", "next", "past"];
 
-export const DEFAULT = { cur: CURRENCIES.slice(), impact: ["High", "Medium", "Low", "Holiday"], range: "week", q: "", window: 15, notify: false };
+export const DEFAULT = { cur: CURRENCIES.slice(), impact: ["High", "Medium", "Low", "Holiday"], types: null, range: "week", q: "", window: 15, notify: false };
 let F = { ...DEFAULT };
 let DATA = { events: [], fetched: "" };
 let loadedAt = 0;
@@ -64,7 +64,8 @@ function bounds(range, now = Date.now()) {
 export function visible(events = DATA.events, f = F, now = Date.now()) {
   const [a, b] = bounds(f.range, now);
   const q = f.q.trim().toLowerCase();
-  let list = events.filter((e) => f.cur.includes(e.cur) && f.impact.includes(e.impact) && e.ms >= a && e.ms < b && (!q || e.title.toLowerCase().includes(q)));
+  const types = f.types || TYPES; // null — все типы (и новые, если появятся)
+  let list = events.filter((e) => f.cur.includes(e.cur) && f.impact.includes(e.impact) && types.includes(typeOf(e)) && e.ms >= a && e.ms < b && (!q || e.title.toLowerCase().includes(q)));
   if (f.range === "week") {
     // «Неделя» — текущая неделя с воскресенья, как на Forex Factory
     const s = new Date(now); s.setHours(0, 0, 0, 0); s.setDate(s.getDate() - s.getDay());
@@ -92,3 +93,21 @@ export function fmtLeft(ms, en = false) {
   if (h < 48) return r ? `${h} ${hh} ${r} ${mn}` : `${h} ${hh}`;
   return `${Math.round(h / 24)} ${dd}`;
 }
+
+// Тип события (как фильтр «Event Types» на Forex Factory). В выгрузке его нет — определяем по названию.
+export const TYPES = ["growth", "inflation", "employment", "cb", "bonds", "housing", "consumer", "business", "speeches", "misc"];
+export const TYPE_RU = { growth: "Рост экономики", inflation: "Инфляция", employment: "Занятость", cb: "Центробанк", bonds: "Облигации",
+  housing: "Жильё", consumer: "Опросы потребителей", business: "Опросы бизнеса", speeches: "Выступления", misc: "Прочее" };
+const RULES = [
+  ["misc", /crude oil|natural gas|\boil\b|api weekly|bank holiday|daylight saving|imf meetings/i],
+  ["speeches", /speaks|speech|testif|remarks|testimony/i],
+  ["bonds", /auction|bond|gilt|bund|\bjgb|t-note|treasury|bill\b/i],
+  ["cb", /interest rate|rate statement|rate decision|monetary policy|policy rate|cash rate|bank rate|\bfomc|minutes|\b(fomc|ecb|boe|boj|rba|rbnz|snb|boc|fed) press conference|loan prime rate|refinancing|deposit facility|reserve requirement|\bmpc\b.*vote|official bank rate|overnight rate/i],
+  ["housing", /\bhome|housing|house|building permit|construction|mortgage|\bn?hpi\b|\bpending|building approvals|starts/i],
+  ["inflation", /\bcpi|\bi?ppi\b|\bppi|\brmpi|\bpce|inflation|price index|prices|\bhicp|\brpi\b|deflator/i],
+  ["employment", /employment|unemployment|jobless|claimant|payroll|non-?farm|\badp|jolts|\bjob|earnings|wage|labou?r|hours worked/i],
+  ["consumer", /consumer (confidence|sentiment|climate)|michigan|\bgfk|westpac consumer|nab consumer|consumer expectations/i],
+  ["business", /\bpmi|\bism\b|\bzew|\bifo\b|sentiment|confidence|survey|outlook|tankan|business|empire state|philly fed|richmond|kc fed|nfib|manufacturing index|services index|economy watchers|\bcb leading|expectations/i],
+  ["growth", /\bgdp|retail sales|industrial production|trade balance|current account|durable goods|factory orders|production|capacity|output|investment|spending|sales|activity|inventor|budget|export|import|credit|money supply|\bm[234]\b|lending|borrowing|leading index|tertiary|machinery orders|core orders/i],
+];
+export const typeOf = (e) => (e.type ||= (RULES.find(([, re]) => re.test(e.title))?.[0] || "misc"));
