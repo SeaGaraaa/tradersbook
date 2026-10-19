@@ -8,6 +8,7 @@ import { exportPNG, exportPDF } from "./export.js";
 import * as St from "./strategy.js";
 import * as SB from "./stbuilder.js";
 import * as Conn from "./connect.js";
+import * as News from "./news.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
@@ -29,7 +30,7 @@ const S = {
   mode: lsGet("tj.mode") === "bt" ? "bt" : "live", // live — реальный счёт, bt — бэктест
   books: { live: { trades: [], sheetId: null }, bt: null },
   lists: { poi: [], entry: [], idea: [], pair: [], session: [] },
-  view: ["journal", "dashboard", "stats", "checklist", "strategy"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
+  view: ["journal", "dashboard", "stats", "checklist", "strategy", "news"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
   run: null, // текущий (несохранённый) чек-лист на вкладке «Чек-лист»
   runs: [], runsSheetId: null, // сохранённые чек-листы (лист Checklists)
   clDraft: null, // правка шаблона чек-листа
@@ -137,6 +138,7 @@ async function reload() {
     S.strategy = data.strategy;
     S.strategyData = data.strategyData || "";
     CL.load(data.lists.checklist);
+    if (data.lists.news) News.setFilter(data.lists.news);
     render();
     return true;
   } catch (e) {
@@ -183,7 +185,7 @@ function pickIdea(name) {
 }
 
 function render() {
-  document.body.classList.toggle("bt", isBT() && !["checklist", "strategy"].includes(S.view));
+  document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect"].includes(S.view));
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === S.view));
   $("#fab").hidden = S.view !== "journal";
   if (S.view === "journal") renderJournal();
@@ -191,9 +193,11 @@ function render() {
   else if (S.view === "checklist") renderChecklist();
   else if (S.view === "strategy") renderStrategy();
   else if (S.view === "connect") renderConnect();
+  else if (S.view === "news") renderNews();
   else renderStats();
   const top = $("#ideaTop");
   if (top) top.oninput = (e) => pickIdea(e.target.value);
+  newsBar();
 }
 
 function setView(v) {
@@ -1107,6 +1111,151 @@ function connectClick(b) {
   return false;
 }
 
+// ---------------- новости (экономический календарь Forex Factory) ----------------
+const IMP_RU = { High: "Высокое", Medium: "Среднее", Low: "Низкое", Holiday: "Выходной" };
+const RANGE_RU = { today: "Сегодня", tomorrow: "Завтра", week: "Неделя", next: "24 часа", past: "Прошедшие" };
+let newsSaveT = 0, newsTick = 0, newsErr = "";
+
+const hm = (ms) => new Date(ms).toLocaleTimeString(LANG === "en" ? "en-GB" : "ru-RU", { hour: "2-digit", minute: "2-digit" });
+const dayTitle = (ms) => new Date(ms).toLocaleDateString(LANG === "en" ? "en-GB" : "ru-RU", { weekday: "long", day: "numeric", month: "long" });
+const utcLabel = () => { const o = -new Date().getTimezoneOffset(); return "UTC" + (o >= 0 ? "+" : "−") + Math.floor(Math.abs(o) / 60) + (Math.abs(o) % 60 ? ":" + String(Math.abs(o) % 60).padStart(2, "0") : ""); };
+const left = (ms) => News.fmtLeft(ms, LANG === "en");
+
+function newsLive() {
+  const now = Date.now(), dz = News.danger(now), f = News.filter();
+  if (!News.data().events.length) return "";
+  const ev = (e) => `<b>${esc(e.cur)}</b> · ${esc(e.title)}`;
+  if (dz.active.length) {
+    const e = dz.active[0], before = e.ms > now;
+    return `<div class="nw-live danger"><div class="nw-live-ico">⚠</div><div>
+      <div class="nw-live-h">${before ? tr("Через {t} — сильная новость. Сделки не открывать", { t: `<span data-cd="${e.ms}">${left(e.ms - now)}</span>` })
+        : tr("Сильная новость вышла {t} назад. Подожди до {h}", { t: `<span data-cd="${e.ms}">${left(now - e.ms)}</span>`, h: hm(e.ms + dz.window) })}</div>
+      <div>${dz.active.map(ev).join("<br>")} · ${hm(e.ms)}</div>
+      <div class="muted">${tr("Опасное окно: {n} мин до и после сильной новости. Открытые позиции — закрыть или в безубыток.", { n: f.window })}</div></div></div>`;
+  }
+  if (dz.next) {
+    const e = dz.next, soon = e.ms - now < 2 * 3600e3;
+    return `<div class="nw-live ${soon ? "soon" : "calm"}"><div class="nw-live-ico">${soon ? "⏱" : "✓"}</div><div>
+      <div class="nw-live-h">${tr("Следующая сильная новость через {t}", { t: `<span data-cd="${e.ms}">${left(e.ms - now)}</span>` })}</div>
+      <div>${ev(e)} · ${esc(dayTitle(e.ms))}, ${hm(e.ms)}</div>
+      <div class="muted">${tr("Опасное окно начнётся в {h}", { h: hm(e.ms - dz.window) })}</div></div></div>`;
+  }
+  return `<div class="nw-live calm"><div class="nw-live-ico">✓</div><div><div class="nw-live-h">${tr("Сильных новостей по выбранным валютам до конца недели нет")}</div></div></div>`;
+}
+
+function renderNews() {
+  const f = News.filter(), D = News.data(), now = Date.now();
+  const mine = News.currenciesOf(S.lists.pair);
+  const list = News.visible();
+  const dz = News.danger(now);
+  const hot = new Set(dz.active.map((e) => e.id));
+  const nextId = list.find((e) => e.ms > now)?.id;
+  let lastDay = "";
+  const rows = list.map((e) => {
+    const day = new Date(e.ms).toDateString();
+    const head = day !== lastDay ? `<div class="nw-day">${esc(dayTitle(e.ms))}</div>` : "";
+    lastDay = day;
+    const past = e.exact && e.ms + 60e3 < now;
+    const cls = ["nw-row", "imp-" + e.impact.toLowerCase(), past ? "past" : "", hot.has(e.id) ? "hot" : "", e.id === nextId ? "next" : ""].join(" ");
+    const status = hot.has(e.id) ? `<span class="nw-badge hot">${tr("опасно")}</span>`
+      : e.id === nextId ? `<span class="nw-badge next">${tr("через {t}", { t: `<span data-cd="${e.ms}">${left(e.ms - now)}</span>` })}</span>`
+      : past ? `<a class="nw-badge done" href="${esc(e.url)}" target="_blank" rel="noopener" title="${tr("Фактическое значение — на сайте Forex Factory")}">${tr("вышла")} ↗</a>` : "";
+    return head + `<div class="${cls}">
+      <div class="nw-time">${e.exact ? hm(e.ms) : esc(e.label || tr("весь день"))}</div>
+      <div class="nw-cur">${esc(e.cur)}</div>
+      <div class="nw-imp" title="${tr(IMP_RU[e.impact] || e.impact)}"><span class="imp-dot"></span><span class="imp-txt">${tr(IMP_RU[e.impact] || e.impact)}</span></div>
+      <div class="nw-title"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a> ${status}</div>
+      <div class="nw-num"><span class="nw-k">${tr("Прогноз")}</span>${esc(e.forecast || "—")}</div>
+      <div class="nw-num"><span class="nw-k">${tr("Пред.")}</span>${esc(e.previous || "—")}</div>
+    </div>`;
+  }).join("");
+  const chip = (on, attr, label, cls = "") => `<button type="button" class="chip ${cls} ${on ? "on" : ""}" ${attr}>${label}</button>`;
+  const fetched = D.fetched ? new Date(D.fetched) : null;
+  $("#view").innerHTML = `<div class="nw-page">
+    <div class="nw-head"><h2>${tr("Новости")}</h2><span class="muted">${tr("Экономический календарь Forex Factory · время {tz}", { tz: utcLabel() })}</span></div>
+    <div id="nwLive">${newsLive()}</div>
+    ${newsErr ? `<div class="panel cx-msg">${esc(newsErr)}</div>` : ""}
+    <section class="panel nw-filters">
+      <div class="nw-frow"><span class="nw-flabel">${tr("Влияние")}</span>
+        ${News.IMPACTS.map((i) => chip(f.impact.includes(i), `data-nwimp="${i}"`, `<span class="imp-dot"></span>${tr(IMP_RU[i])}`, "imp-chip imp-" + i.toLowerCase())).join("")}</div>
+      <div class="nw-frow"><span class="nw-flabel">${tr("Валюты")}</span>
+        ${News.CURRENCIES.map((c) => chip(f.cur.includes(c), `data-nwcur="${c}"`, c === "All" ? tr("Все страны") : c)).join("")}
+        <span class="nw-fsep"></span>
+        ${mine.length ? chip(false, 'data-nwmine="1"', tr("Мои активы: {c}", { c: mine.join(", ") }), "accent") : ""}
+        ${chip(false, 'data-nwall="1"', tr("Все"))}</div>
+      <div class="nw-frow"><span class="nw-flabel">${tr("Период")}</span>
+        <div class="seg">${News.RANGES.map((r) => `<button type="button" data-nwrange="${r}" class="${f.range === r ? "on" : ""}">${tr(RANGE_RU[r])}</button>`).join("")}</div>
+        <input type="search" class="nw-q" data-nwq="1" placeholder="${tr("Поиск: CPI, NFP, ставка…")}" value="${esc(f.q)}"></div>
+      <div class="nw-frow nw-set"><label>${tr("Опасное окно")} <input type="number" min="0" max="120" step="5" data-nwwin="1" value="${esc(f.window)}"> ${tr("мин до и после сильной новости")}</label>
+        ${"Notification" in window ? `<label class="nw-check"><input type="checkbox" data-nwnotify="1" ${f.notify ? "checked" : ""}> ${tr("Напоминать перед сильной новостью")}</label>` : ""}</div>
+    </section>
+    <section class="panel nw-list">
+      <div class="nw-row nw-thead"><div>${tr("Время")}</div><div>${tr("Валюта")}</div><div>${tr("Влияние")}</div><div>${tr("Событие")}</div><div>${tr("Прогноз")}</div><div>${tr("Пред.")}</div></div>
+      ${rows || `<div class="empty">${D.events.length ? tr("По этому фильтру новостей нет") : tr("Календарь загружается…")}</div>`}
+    </section>
+    <div class="hint nw-foot">${tr("Источник: Forex Factory. Выгрузка обновляется раз в час (так требует Forex Factory){t}. Фактические значения в выгрузке нет — после выхода новости нажми «вышла ↗», откроется событие на сайте.", { t: fetched ? tr(", последняя — в {h}", { h: hm(fetched.getTime()) }) : "" })}</div>
+  </div>`;
+}
+
+// Фильтр: сразу на устройстве, в таблицу — через секунду после последнего изменения (один на все устройства).
+function newsSet(patch, rerender = true) {
+  const f = News.setFilter({ ...News.filter(), ...patch });
+  clearTimeout(newsSaveT);
+  newsSaveT = setTimeout(() => api.saveNewsFilter(JSON.stringify(f)).catch(() => {}), 1200);
+  newsBar();
+  if (rerender && S.view === "news") renderNews();
+}
+
+function newsClick(b) {
+  const d = b.dataset, f = News.filter();
+  const tog = (arr, x) => (arr.includes(x) ? arr.filter((y) => y !== x) : [...arr, x]);
+  if (d.nwimp) { newsSet({ impact: tog(f.impact, d.nwimp) }); return true; }
+  if (d.nwcur) { newsSet({ cur: tog(f.cur, d.nwcur) }); return true; }
+  if (d.nwmine) { newsSet({ cur: News.currenciesOf(S.lists.pair) }); return true; }
+  if (d.nwall) { newsSet({ cur: News.CURRENCIES.slice() }); return true; }
+  if (d.nwrange) { newsSet({ range: d.nwrange }); return true; }
+  return false;
+}
+
+// Полоса предупреждения на всех вкладках и красная точка у вкладки «Новости».
+function newsBar() {
+  const bar = $("#newsBar"), tab = $('.tab[data-view="news"]');
+  if (!bar) return;
+  const now = Date.now(), dz = News.danger(now);
+  tab?.classList.toggle("hot", dz.active.length > 0);
+  if (!dz.active.length || S.view === "news") { bar.hidden = true; return; }
+  const e = dz.active[0];
+  bar.hidden = false;
+  bar.innerHTML = `⚠ <b>${esc(e.cur)}</b> ${esc(e.title)} — ${e.ms > now ? tr("через {t}", { t: left(e.ms - now) }) : tr("вышла {t} назад", { t: left(now - e.ms) })}. ${tr("Опасно торговать")}`;
+}
+
+// Раз в секунду — отсчёт и полоса; раз в 5 минут — свежий календарь; напоминания перед сильными новостями.
+function newsStart() {
+  if (newsTick) return;
+  const refresh = () => News.load().then(() => { newsErr = ""; if (S.view === "news") renderNews(); newsBar(); })
+    .catch(() => { newsErr = tr("Не удалось загрузить календарь — проверь интернет"); if (S.view === "news") renderNews(); });
+  refresh();
+  setInterval(refresh, 5 * 60e3);
+  newsTick = setInterval(() => {
+    const now = Date.now();
+    $$("[data-cd]").forEach((el) => (el.textContent = left(Math.abs(+el.dataset.cd - now))));
+    if (S.view === "news") { const live = $("#nwLive"); const html = newsLive(); if (live && live.dataset.h !== html) { live.innerHTML = html; live.dataset.h = html; } }
+    newsBar();
+    newsNotify(now);
+  }, 1000);
+}
+
+function newsNotify(now) {
+  const f = News.filter();
+  if (!f.notify || !("Notification" in window) || Notification.permission !== "granted") return;
+  for (const e of News.danger(now).active) {
+    const k = "tj.nw." + e.id;
+    if (e.ms < now || sessionStorage.getItem(k)) continue;
+    sessionStorage.setItem(k, "1");
+    try { new Notification(`⚠ ${e.cur}: ${e.title}`, { body: tr("Через {t}. Опасно торговать", { t: left(e.ms - now) }), icon: "icons/tb-icon-192.png", tag: e.id }); } catch { /* iOS без push */ }
+  }
+}
+
 function renderStrategyEditor() {
   const preview = S.stPreview;
   const r = preview ? St.render(S.stEdit) : null;
@@ -1824,6 +1973,7 @@ function events() {
   $("#theme").onclick = toggleTheme;
   $$(".tab").forEach((b) => (b.onclick = () => setView(b.dataset.view)));
   $("#fab").onclick = () => openEditor(null);
+  $("#newsBar").onclick = () => setView("news");
   $("#refresh").onclick = () => reload().then((ok) => ok && toast(tr("Обновлено")));
   $("#logout").onclick = () => { if (confirm(tr("Выйти из Google-аккаунта в приложении?"))) { auth.logout(); showLogin(); } };
   $("#view").addEventListener("click", (e) => {
@@ -1831,6 +1981,7 @@ function events() {
     if (btn && S.view === "checklist" && checklistClick(btn)) return;
     if (btn && S.view === "strategy" && strategyClick(btn)) return;
     if (btn && S.view === "connect" && connectClick(btn)) return;
+    if (btn && S.view === "news" && newsClick(btn)) return;
     if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
     const toc = e.target.closest("[data-sttoc]");
     if (toc) { e.preventDefault(); document.getElementById(toc.dataset.sttoc)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
@@ -1847,6 +1998,12 @@ function events() {
     if (e.target.dataset.rnote && S.run) { S.run.note = e.target.value; saveRun(); }
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
     if (e.target.dataset.cxf) { CX.form[e.target.dataset.cxf] = e.target.value; return; }
+    if (e.target.dataset.nwq != null) {
+      const pos = e.target.selectionStart;
+      newsSet({ q: e.target.value });
+      const q = $("[data-nwq]"); if (q) { q.focus(); q.setSelectionRange(pos, pos); }
+      return;
+    }
     if (e.target.dataset.stb && S.stB) { const [p, key] = clPath(S.stB, e.target.dataset.stb); p[key] = e.target.value; if (e.target.classList.contains("stb-area")) autoGrow(e.target); return; }
     if (e.target.dataset.clp && S.clDraft) { const [p, key] = clPath(S.clDraft, e.target.dataset.clp); p[key] = e.target.value; }
   });
@@ -1854,6 +2011,12 @@ function events() {
   $("#view").addEventListener("click", chartTip);
   $("#view").addEventListener("mouseleave", () => { const t = $("#chartTip"); if (t) t.hidden = true; });
   $("#view").addEventListener("change", (e) => {
+    if (e.target.dataset.nwwin) { newsSet({ window: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) }); return; }
+    if (e.target.dataset.nwnotify) {
+      if (!e.target.checked) { newsSet({ notify: false }); return; }
+      Notification.requestPermission().then((p) => { newsSet({ notify: p === "granted" }); if (p !== "granted") toast(tr("Браузер не разрешил уведомления"), true); });
+      return;
+    }
     if (e.target.dataset.cxtz && CX.report) { CX.report.tz = e.target.value; return; }
     if (e.target.dataset.cxfile && e.target.files?.[0]) { cxReadReport(e.target.files[0]); e.target.value = ""; return; }
     if (e.target.dataset.cxpick && CX.preview) { CX.preview.items[+e.target.dataset.cxpick].pick = e.target.checked; renderConnect(); return; }
@@ -1885,6 +2048,7 @@ async function boot() {
   if (r?.error) toast(tr("Вход не выполнен: {e}", { e: r.error }), true);
   if (!auth.token()) return showLogin();
   showApp();
+  newsStart();
   S.run = loadRun();
   events();
   applyLangUi();

@@ -93,7 +93,7 @@ export async function loadAll() {
   const lastCol = (b) => String.fromCharCode(64 + b.ncols);
   const ranges = [`${q(BOOKS.live.title)}!A1:${lastCol(BOOKS.live)}`];
   if (has(CONFIG.dashboardSheet)) ranges.push(`${D}!H9:H17`, `${D}!H21:H23`);
-  if (has(CONFIG.listsSheet)) ranges.push(`${q(CONFIG.listsSheet)}!A1:F`);
+  if (has(CONFIG.listsSheet)) ranges.push(`${q(CONFIG.listsSheet)}!A1:G`);
   if (has(BOOKS.bt.title)) ranges.push(`${q(BOOKS.bt.title)}!A1:${lastCol(BOOKS.bt)}`);
   if (has(CONFIG.checklistsSheet)) ranges.push(`${q(CONFIG.checklistsSheet)}!A1:I`);
   if (has(CONFIG.strategySheet)) ranges.push(`${q(CONFIG.strategySheet)}!A2:B200`);
@@ -110,7 +110,7 @@ export async function loadAll() {
   if (!js) throw new Error(`Нет листа ${BOOKS.live.title}`);
   const bs = sheet(BOOKS.bt.title);
 
-  const lists = { poi: [], entry: [], idea: [], pair: [], tf: [], checklist: "" };
+  const lists = { poi: [], entry: [], idea: [], pair: [], tf: [], checklist: "", news: "" };
   for (const d of sheet(CONFIG.dashboardSheet)?.data || []) {
     const vals = (d.rowData || []).map((r) => String(cellValue(r.values?.[0])).trim()).filter(Boolean);
     if (d.startRow === 8) lists.poi = vals;
@@ -127,6 +127,7 @@ export async function loadAll() {
     lists.pair = col(3);
     lists.tf = col(4);
     lists.checklist = String(cellValue(rows[0]?.values?.[5]) || ""); // F2 — чек-лист (JSON)
+    lists.news = String(cellValue(rows[0]?.values?.[6]) || ""); // G2 — фильтр новостей (JSON)
   }
   const cs = sheet(CONFIG.checklistsSheet);
   const runs = { sheetId: cs?.properties.sheetId ?? null, list: [] };
@@ -473,4 +474,15 @@ export async function appendRows(book, rows, sheetId, lastKnownRow) {
   await post(`${SHEETS}${ID}/values/${encodeURIComponent(`${q(book.title)}!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
     { values: rows.map((v) => v.slice(0, book.ncols)) });
   await sortSheet(book, sheetId, lastKnownRow + rows.length);
+}
+
+// Фильтр вкладки «Новости» (Lists!G2, JSON) — один на все устройства пользователя.
+export async function saveNewsFilter(json) {
+  if (!(await sheetTitles()).some((s) => s.title === CONFIG.listsSheet)) {
+    await batch([{ addSheet: { properties: { title: CONFIG.listsSheet } } }]);
+  }
+  await post(`${SHEETS}${ID}/values:batchUpdate`, {
+    valueInputOption: "RAW",
+    data: [{ range: `${q(CONFIG.listsSheet)}!G1:G2`, values: [["News filter (правится в приложении)"], [json]] }],
+  });
 }
