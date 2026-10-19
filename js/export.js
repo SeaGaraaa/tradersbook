@@ -114,9 +114,11 @@ function layout(ctx, run, img, draw) {
     ctx.font = `700 ${f.s}px ${FONT}`; ctx.fillStyle = C.text; ctx.textBaseline = "top";
     ctx.fillText(f.v, x, y + 58 + (32 - f.s) / 2);
   };
-  col(tr("АКТИВ"), run.pair, left, 210);
+  // сетап не выбран — колонки «Сетап» на картинке нет вовсе
+  const setupName = setup?.name || run.setupName || "";
+  col(tr("АКТИВ"), run.pair, left, setupName ? 210 : right - Math.max(vW, 80) - 48 - left);
   const setupX = left + 240;
-  col(tr("СЕТАП"), setup?.name || run.setupName || tr("без сетапа"), setupX, right - Math.max(vW, 80) - 48 - setupX);
+  if (setupName) col(tr("СЕТАП"), setupName, setupX, right - Math.max(vW, 80) - 48 - setupX);
   if (draw) {
     ctx.textAlign = "right"; ctx.textBaseline = "top";
     ctx.font = `600 20px ${FONT}`; ctx.fillStyle = C.muted; ctx.fillText(tr("ИТОГ"), right, y + 24);

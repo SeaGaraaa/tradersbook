@@ -264,4 +264,10 @@ export const EN = {
   "По дням недели": "By weekday",
   "— день входа в сделку": "— trade entry day",
   "Дни недели — подробно": "Weekdays — details",
+
+  // сетапы в чек-листе
+  "изменить сетапы": "edit setups",
+  "Название нового сетапа:": "New setup name:",
+  "Такой сетап уже есть": "This setup already exists",
+  "Сетап «{name}» добавлен — свои пункты можно дописать в «изменить сетапы»": "Setup “{name}” added — add its items in “edit setups”",
 };

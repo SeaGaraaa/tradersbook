@@ -908,9 +908,10 @@ function renderChecklist() {
       <div class="cl-h">${tr("Актив")}</div>
       <div class="chips">${S.lists.pair.map((p) => `<button type="button" class="chip ${c.pair === p ? "on" : ""}" data-rpair="${esc(p)}">${esc(p)}</button>`).join("")}
         <button type="button" class="chip add" data-act="pair-add" title="${tr("Пара добавится везде: журнал, бэктест, чек-лист")}">${tr("+ пара")}</button></div>
-      ${d.setups.length ? `      <div class="cl-h">${tr("Сетап")} <span class="muted">${tr("— не обязательно; выбранный добавит свои пункты")}</span></div>
-      <div class="chips">${d.setups.map((s) => `<button type="button" class="chip ${c.setup === s.id ? "on" : ""}" data-rsetup="${esc(s.id)}">${esc(s.name)}</button>`).join("")}</div>
-` : ""}
+      <div class="cl-h">${tr("Сетап")} <span class="muted">${tr("— не обязательно; выбранный добавит свои пункты")}</span></div>
+      <div class="chips">${d.setups.map((s) => `<button type="button" class="chip ${c.setup === s.id ? "on" : ""}" data-rsetup="${esc(s.id)}">${esc(s.name)}</button>`).join("")}
+        <button type="button" class="chip add" data-act="setup-add">${tr("+ сетап")}</button>
+        ${d.setups.length ? `<button type="button" class="link-btn" data-act="setup-edit">${tr("изменить сетапы")}</button>` : ""}</div>
       ${d.general.map((g) => `<div class="cl-h">${esc(g.title)}</div>${g.items.map(item).join("")}`).join("")}
       ${setup ? `<div class="cl-h">${esc(setup.name)}${setup.entry ? ` <span class="muted">— ${esc(setup.entry)}</span>` : ""}</div>
         ${setup.items.map(item).join("")}${setup.no ? `<div class="hint cl-no-trade">${esc(setup.no)}</div>` : ""}` : ""}
@@ -1048,7 +1049,7 @@ function checklistEditor() {
         <button type="button" class="chip-x" data-cldel="general.${gi}" aria-label="${tr("Удалить группу")}">×</button></div>
       ${items(`general.${gi}.items`, g.items)}</div>`).join("")}
     <button type="button" class="btn ghost sm" data-cladd="general">${tr("+ группа")}</button>
-    <div class="cle-sec">${tr("Сетапы — добавляется блок выбранного сетапа")}</div>
+    <div class="cle-sec" id="cle-setups">${tr("Сетапы — добавляется блок выбранного сетапа")}</div>
     ${d.setups.map((s, si) => `<div class="cle-group">
       <div class="cle-row"><input data-clp="setups.${si}.name" value="${esc(s.name)}" placeholder="${tr("Название сетапа")}">
         <input data-clp="setups.${si}.entry" value="${esc(s.entry || "")}" placeholder="${tr("Вход (например, от Confirm)")}">
@@ -1087,6 +1088,29 @@ function clDelete(path) {
   if (!confirm(tr("Удалить {w}?", { w: what }))) return;
   p.splice(k, 1);
   renderChecklist();
+}
+
+// Новый сетап прямо из чек-листа: сохраняется в шаблон и сразу выбирается. Пункты добавляются в «изменить сетапы».
+async function setupAdd() {
+  const name = (prompt(tr("Название нового сетапа:")) || "").trim();
+  if (!name) return;
+  if (CL.current().setups.some((s) => s.name.toLowerCase() === name.toLowerCase())) { toast(tr("Такой сетап уже есть"), true); return; }
+  const d = CL.draft();
+  const id = CL.newId("S");
+  d.setups.push({ id, name, entry: "", no: "", items: [] });
+  const out = CL.finalize(d);
+  setBusy(true);
+  try {
+    await api.saveChecklist(JSON.stringify(out));
+    CL.load(JSON.stringify(out));
+    S.run.setup = id; saveRun();
+    renderChecklist();
+    toast(tr("Сетап «{name}» добавлен — свои пункты можно дописать в «изменить сетапы»", { name }));
+  } catch (e) {
+    handleErr(e);
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function clSave() {
@@ -1131,6 +1155,12 @@ function checklistClick(b) {
     if (!val) return true;
     if (S.lists.pair.some((x) => x.toUpperCase() === val)) { toast(tr("Такая пара уже есть"), true); return true; }
     updateList("pair", [...S.lists.pair, val]).then((ok) => { if (ok) { S.run.pair = val; saveRun(); renderChecklist(); } });
+    return true;
+  }
+  if (a === "setup-add") { setupAdd(); return true; }
+  if (a === "setup-edit") {
+    S.clDraft = CL.draft(); renderChecklist();
+    $("#cle-setups")?.scrollIntoView({ block: "start" });
     return true;
   }
   if (a === "run-save") { runSave(); return true; }
