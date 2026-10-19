@@ -492,3 +492,33 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .stats-empty { text-align: center; padding: 40px 24px !important; }
 .stats-empty h3 { font-size: 17px !important; }
 .stats-empty p { max-width: 520px; margin: 8px auto 0; line-height: 1.6; }
+
+/* ---------- конструктор стратегии ---------- */
+.st-empty-hint { margin-top: 14px; }
+.stb-bar { display: flex; align-items: center; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
+.stb-intro { margin: 0 0 12px; }
+.stb-sec { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; max-width: 900px; margin-left: auto; margin-right: auto; }
+.st-page > .stb-intro, .st-page > .stb-add, .st-page > .stb-bar { max-width: 900px; margin-left: auto; margin-right: auto; }
+.stb-head { display: flex; gap: 8px; align-items: center; }
+.stb-head input { flex: 1; min-width: 0; }
+.stb-title { font-size: 18px; font-weight: 700; border-color: transparent; background: transparent; padding-left: 4px; }
+.stb-title:hover, .stb-title:focus { border-color: var(--line); background: var(--bg); }
+.stb-name { font-weight: 700; font-size: 16px; }
+.stb-tools { display: flex; gap: 4px; align-items: center; flex: none; }
+.stb-btn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+.stb-btn:disabled { opacity: .35; cursor: default; }
+.stb-btn:not(:disabled):hover { color: var(--text); border-color: var(--accent); }
+.stb-area { width: 100%; font-size: 15px; line-height: 1.5; resize: none; overflow: hidden; min-height: 44px; }
+.stb-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.stb-label { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .03em; }
+.stb-label .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.stb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.stb-grid-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.stb-setup { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--bg); }
+.stb-sec > .btn { align-self: flex-start; }
+.stb-imgs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stb-thumb { position: relative; }
+.stb-thumb .st-img { width: 120px; height: 80px; object-fit: cover; }
+.stb-thumb .chip-x { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.stb-add { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px auto 24px; }
+.stb-page { max-width: 900px; }

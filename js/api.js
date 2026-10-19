@@ -96,7 +96,7 @@ export async function loadAll() {
   if (has(CONFIG.listsSheet)) ranges.push(`${q(CONFIG.listsSheet)}!A1:F`);
   if (has(BOOKS.bt.title)) ranges.push(`${q(BOOKS.bt.title)}!A1:${lastCol(BOOKS.bt)}`);
   if (has(CONFIG.checklistsSheet)) ranges.push(`${q(CONFIG.checklistsSheet)}!A1:I`);
-  if (has(CONFIG.strategySheet)) ranges.push(`${q(CONFIG.strategySheet)}!A2:A200`);
+  if (has(CONFIG.strategySheet)) ranges.push(`${q(CONFIG.strategySheet)}!A2:B200`);
 
   const p = new URLSearchParams();
   for (const r of ranges) p.append("ranges", r);
@@ -141,7 +141,9 @@ export async function loadAll() {
   // стратегия: текст лежит кусками в A2, A3, … (одна ячейка — до 50 000 символов)
   const ss = sheet(CONFIG.strategySheet);
   const strategy = ss ? (ss.data?.[0]?.rowData || []).map((r) => String(cellValue(r.values?.[0]) ?? "")).join("") : null;
+  const strategyData = ss ? (ss.data?.[0]?.rowData || []).map((r) => String(cellValue(r.values?.[1]) ?? "")).join("") : "";
   return {
+    strategyData, // JSON конструктора (колонка B); пусто — стратегия написана текстом
     strategy, // null — листа ещё нет (стратегию не заполняли)
     runs,
     live: { sheetId: js.properties.sheetId, trades: parseTrades(js, BOOKS.live.ncols) },
@@ -223,17 +225,21 @@ export async function deleteRun(sheetId, n, at) {
 
 // ---------- торговая стратегия (лист Strategy: A1 — подпись, A2… — текст кусками по 40 000 символов) ----------
 
-export async function saveStrategy(md) {
+// data — JSON конструктора (колонка B); без него страница считается написанной текстом.
+export async function saveStrategy(md, data = "") {
   const S = q(CONFIG.strategySheet);
   if (!(await sheetTitles()).some((s) => s.title === CONFIG.strategySheet)) {
     await batch([{ addSheet: { properties: { title: CONFIG.strategySheet } } }]);
   }
   const parts = [];
   for (let i = 0; i < md.length; i += 40000) parts.push([md.slice(i, i + 40000)]);
-  await post(`${SHEETS}${ID}/values/${encodeURIComponent(`${S}!A:A`)}:clear`, {});
+  const dparts = [];
+  for (let i = 0; i < data.length; i += 40000) dparts.push([data.slice(i, i + 40000)]);
+  await post(`${SHEETS}${ID}/values/${encodeURIComponent(`${S}!A:B`)}:clear`, {});
   await post(`${SHEETS}${ID}/values:batchUpdate`, {
     valueInputOption: "RAW",
-    data: [{ range: `${S}!A1`, values: [["Strategy (Markdown, правится в приложении Trader'sBook)"], ...(parts.length ? parts : [[""]])] }],
+    data: [{ range: `${S}!A1`, values: [["Strategy (Markdown, правится в приложении Trader'sBook)"], ...(parts.length ? parts : [[""]])] }]
+      .concat(dparts.length ? [{ range: `${S}!B2`, values: dparts }] : []),
   });
 }
 

@@ -6,6 +6,7 @@ import { TF, NUM_COLS, IDEA, SCREENS, CHECK, toForm, formValues, diff } from "./
 import * as CL from "./checklist.js";
 import { exportPNG, exportPDF } from "./export.js";
 import * as St from "./strategy.js";
+import * as SB from "./stbuilder.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
@@ -31,7 +32,7 @@ const S = {
   run: null, // текущий (несохранённый) чек-лист на вкладке «Чек-лист»
   runs: [], runsSheetId: null, // сохранённые чек-листы (лист Checklists)
   clDraft: null, // правка шаблона чек-листа
-  strategy: null, stEdit: null, stPreview: false, // торговая стратегия (лист Strategy); stEdit — текст в правке
+  strategy: null, strategyData: "", stB: null, stBOrig: "", stEdit: null, stPreview: false, // торговая стратегия (лист Strategy); stEdit — текст в правке
   f: { live: emptyFilter(), bt: emptyFilter() },
   btIdea: lsGet("tj.btIdea") || "", // идея, выбранная на Dashboard бэктеста
   ed: null, // открытая карточка: { mode, n, key, form, uploading, manage }
@@ -133,6 +134,7 @@ async function reload() {
     S.runs = data.runs.list;
     S.runsSheetId = data.runs.sheetId;
     S.strategy = data.strategy;
+    S.strategyData = data.strategyData || "";
     CL.load(data.lists.checklist);
     render();
     return true;
@@ -686,6 +688,7 @@ function renderEditor() {
 
 function renderStrategy() {
   const md = S.strategy;
+  if (S.stB) return renderStrategyBuilder();
   if (S.stEdit != null) return renderStrategyEditor();
   if (!md || !md.trim()) {
     $("#view").innerHTML = `<div class="st-page"><section class="panel st-empty">
@@ -693,8 +696,10 @@ function renderStrategy() {
       <h2>${tr("Твоя торговая стратегия")}</h2>
       <p class="muted">${tr("Здесь хранятся правила твоей торговли: пары, риск, сетапы, вход, стоп и тейк. Стратегия лежит в твоей Google-таблице и видна только тебе.")}</p>
       <div class="cle-actions st-empty-actions">
-        <button type="button" class="btn primary" data-act="st-template">${tr("Начать с шаблона")}</button>
-        <button type="button" class="btn ghost" data-act="st-blank">${tr("Пустая страница")}</button>
+        <button type="button" class="btn primary" data-act="st-build">${tr("Заполнить по разделам")}</button>
+        <button type="button" class="btn ghost" data-act="st-template">${tr("Писать текстом")}</button>
+      </div>
+      <div class="hint st-empty-hint">${tr("По разделам проще: пары, риск, время, сетапы — у каждого свои поля с подсказками. Текстом — для тех, кто привык к Markdown.")}
       </div>
     </section></div>`;
     return;
@@ -731,6 +736,187 @@ async function stAutoImport() {
     if (!St.render(S.strategy).missing.length) await api.dropPendingImages();
   } catch (e) {
     handleErr(e);
+  }
+}
+
+// ---------------- конструктор стратегии ----------------
+const STB_HINT = {
+  principles: "Например:\nТоргую только сетапы с этой страницы\nНе отыгрываюсь после убытка",
+  time: "Например:\nЛондон 10:00–13:00 (UTC+3)\nНе вхожу в первые 15 минут сессии\nНе торгую за 15 минут до важных новостей",
+  manage: "Например:\nПри +1R переношу стоп в безубыток\nЗакрываю сделку до конца сессии",
+};
+
+function renderStrategyBuilder() {
+  const d = S.stB;
+  const preview = S.stPreview;
+  const r = preview ? St.render(SB.toMarkdown(d)) : null;
+  const area = (path, value, ph, rows = 3) =>
+    `<textarea class="stb-area" rows="${rows}" data-stb="${path}" placeholder="${esc(ph)}">${esc(value || "")}</textarea>`;
+  const field = (label, help, html) => `<label class="stb-field"><span class="stb-label">${label}${help ? ` <span class="muted">${help}</span>` : ""}</span>${html}</label>`;
+  const tools = (path, i, n) => `<span class="stb-tools">
+      <button type="button" class="stb-btn" data-stbmove="${path}|${i}|-1" ${i ? "" : "disabled"} aria-label="${tr("Выше")}">↑</button>
+      <button type="button" class="stb-btn" data-stbmove="${path}|${i}|1" ${i < n - 1 ? "" : "disabled"} aria-label="${tr("Ниже")}">↓</button>
+      <button type="button" class="chip-x" data-stbdel="${path}|${i}" aria-label="${tr("Удалить")}">×</button></span>`;
+  const images = (path, list) => `<div class="stb-imgs">
+      ${(list || []).map((u, j) => `<span class="stb-thumb">${St.imageHtml(u)}<button type="button" class="chip-x" data-stbimgdel="${path}|${j}" aria-label="${tr("Удалить")}">×</button></span>`).join("")}
+      <label class="btn ghost sm file">${tr("+ картинка")}<input type="file" accept="image/*" multiple data-stbimg="${path}" hidden></label></div>`;
+
+  const body = (s, i) => {
+    const p = `sections.${i}`;
+    if (s.kind === "list") {
+      return area(`${p}.text`, s.text, tr(STB_HINT[s.hint] || "Каждая строка — отдельный пункт"), 4) + images(`${p}.images`, s.images);
+    }
+    if (s.kind === "pairs") {
+      return `<div class="chips">${S.lists.pair.map((x) => `<button type="button" class="chip ${s.pairs.includes(x) ? "on" : ""}" data-stbpair="${i}|${esc(x)}">${esc(x)}</button>`).join("")}
+        <button type="button" class="chip add" data-stbpairadd="${i}">${tr("+ пара")}</button></div>
+        ${area(`${p}.text`, s.text, tr("Заметки по парам (не обязательно)"), 2)}`;
+    }
+    if (s.kind === "risk") {
+      const num = (k, label, ph) => field(label, "", `<input data-stb="${p}.${k}" value="${esc(s[k] || "")}" placeholder="${ph}" inputmode="decimal">`);
+      return `<div class="stb-grid">
+          ${num("risk", tr("Риск на сделку, %"), "0,5")}
+          ${num("stops", tr("Стопов в день, максимум"), "2")}
+          ${num("trades", tr("Сделок в день, максимум"), "3")}
+          ${num("rr", tr("Минимальный RR, 1 к …"), "2")}
+        </div>
+        ${field(tr("Другие правила риска"), "", area(`${p}.text`, s.text, tr("Например: после 3 стопов подряд риск 0,25%"), 2))}`;
+    }
+    return `${(s.setups || []).map((st, j) => {
+      const q = `${p}.setups.${j}`;
+      return `<div class="stb-setup">
+        <div class="stb-head"><input class="stb-name" data-stb="${q}.name" value="${esc(st.name)}" placeholder="${tr("Название сетапа")}">${tools(`${p}.setups`, j, s.setups.length)}</div>
+        ${field(tr("Когда появляется"), tr("— контекст, время, что делает цена"), area(`${q}.when`, st.when, tr("Например:\nАзия в диапазоне\nЛондон снимает максимум Азии"), 3))}
+        <div class="stb-grid stb-grid-3">
+          ${field(tr("Вход"), "", area(`${q}.entry`, st.entry, tr("Например: слом структуры на M5, вход от отката"), 2))}
+          ${field("Stop Loss", "", area(`${q}.sl`, st.sl, tr("Например: за максимум манипуляции"), 2))}
+          ${field("Take Profit", "", area(`${q}.tp`, st.tp, tr("Например: минимум Азии"), 2))}
+        </div>
+        ${field(tr("Когда сделки нет"), tr("— сетап отменяется"), area(`${q}.inval`, st.inval, tr("Например: цена ушла дальше 30 пунктов от открытия дня"), 2))}
+        ${images(`${q}.images`, st.images)}
+      </div>`;
+    }).join("")}
+      <button type="button" class="btn ghost sm" data-stbaddsetup="${i}">${tr("+ сетап")}</button>`;
+  };
+
+  const kinds = new Set(d.sections.map((s) => s.kind));
+  const addBtn = (kind, label) => `<button type="button" class="btn ghost sm" data-stbadd="${kind}">${label}</button>`;
+  $("#view").innerHTML = `<div class="st-page stb-page">
+    <header class="panel st-head">
+      <img src="icons/tb-icon-192.png" alt="" class="st-logo">
+      <div class="st-title"><h1>${tr("Торговая стратегия")}</h1><div class="muted">${tr("Конструктор")}</div></div>
+      <span class="grow"></span>
+      <button type="button" class="btn ghost sm" data-act="st-cancel">${tr("Отмена")}</button>
+      <button type="button" class="btn primary sm" data-act="st-save">${tr("Сохранить")}</button>
+    </header>
+    <div class="stb-bar">
+      <div class="seg st-mode">
+        <button type="button" data-act="st-write" class="${preview ? "" : "on"}">${tr("Заполнение")}</button>
+        <button type="button" data-act="st-preview" class="${preview ? "on" : ""}">${tr("Просмотр")}</button>
+      </div>
+      <span class="grow"></span>
+      <button type="button" class="link-btn muted" data-act="st-totext">${tr("Писать текстом")}</button>
+    </div>
+    ${preview ? `<article class="panel st-body">${r.html || `<div class="empty">${tr("Пока пусто — заполни хотя бы один раздел")}</div>`}</article>` : `
+    <div class="hint stb-intro">${tr("Заполняй только то, что нужно: пустые поля и разделы на странице не появятся. В каждом поле одна строка — один пункт.")}</div>
+    ${d.sections.map((s, i) => `<section class="panel stb-sec">
+      <div class="stb-head"><input class="stb-title" data-stb="sections.${i}.title" value="${esc(s.title)}" placeholder="${tr("Название раздела")}">${tools("sections", i, d.sections.length)}</div>
+      ${body(s, i)}
+    </section>`).join("")}
+    <div class="stb-add">
+      ${addBtn("list", tr("+ свой раздел"))}
+      ${kinds.has("setups") ? "" : addBtn("setups", tr("+ сетапы"))}
+      ${kinds.has("risk") ? "" : addBtn("risk", tr("+ риск-менеджмент"))}
+      ${kinds.has("pairs") ? "" : addBtn("pairs", tr("+ торговые пары"))}
+    </div>`}
+  </div>`;
+  hydrateThumbs($("#view"));
+  $$(".stb-area").forEach(autoGrow);
+}
+
+function autoGrow(ta) {
+  ta.style.height = "auto";
+  ta.style.height = ta.scrollHeight + 2 + "px";
+}
+
+function openBuilder(d) {
+  S.stB = d;
+  S.stBOrig = JSON.stringify(d);
+  S.stPreview = false;
+  renderStrategy();
+  window.scrollTo(0, 0);
+}
+
+// Действия конструктора; true — нажатие обработано.
+function builderClick(b) {
+  const d = S.stB;
+  if (!d) return false;
+  const ds = b.dataset;
+  if (ds.stbmove) {
+    const [path, i, dir] = ds.stbmove.split("|");
+    const [p, k] = clPath(d, path); const a = p[k], x = +i, y = x + +dir;
+    if (y < 0 || y >= a.length) return true;
+    [a[x], a[y]] = [a[y], a[x]];
+  } else if (ds.stbdel) {
+    const [path, i] = ds.stbdel.split("|");
+    const [p, k] = clPath(d, path);
+    const what = path === "sections" ? tr("раздел целиком") : tr("сетап целиком");
+    if (!confirm(tr("Удалить {what}?", { what }))) return true;
+    p[k].splice(+i, 1);
+  } else if (ds.stbimgdel) {
+    const [path, j] = ds.stbimgdel.split("|");
+    const [p, k] = clPath(d, path); p[k].splice(+j, 1);
+  } else if (ds.stbpair) {
+    const [i, pair] = ds.stbpair.split("|");
+    const s = d.sections[+i];
+    s.pairs = s.pairs.includes(pair) ? s.pairs.filter((x) => x !== pair) : [...s.pairs, pair];
+  } else if (ds.stbpairadd) {
+    const val = (prompt(tr("Новая торговая пара (например, USDJPY):")) || "").toUpperCase().replace(/\s/g, "");
+    if (!val) return true;
+    const s = d.sections[+ds.stbpairadd];
+    if (S.lists.pair.some((x) => x.toUpperCase() === val)) { if (!s.pairs.includes(val)) s.pairs.push(val); renderStrategy(); return true; }
+    updateList("pair", [...S.lists.pair, val]).then((ok) => { if (ok) { s.pairs.push(val); renderStrategy(); } });
+    return true;
+  } else if (ds.stbaddsetup) {
+    d.sections[+ds.stbaddsetup].setups.push(SB.newSetup(d.lang));
+  } else if (ds.stbadd) {
+    d.sections.push(SB.newSection(ds.stbadd, d.lang));
+    renderStrategy();
+    $$(".stb-sec").at(-1)?.scrollIntoView({ block: "start" });
+    $$(".stb-sec").at(-1)?.querySelector("input")?.focus();
+    return true;
+  } else return false;
+  renderStrategy();
+  return true;
+}
+
+async function stbUpload(files, path) {
+  if (!auth.hasDrive()) { toast(tr("Нет доступа к Google Drive — при входе отметь доступ к файлам"), true); return; }
+  setBusy(true);
+  try {
+    const [p, k] = clPath(S.stB, path);
+    for (const f of files) p[k].push(await api.uploadImage(f, `strategy_${f.name}`));
+    renderStrategy();
+  } catch (e) {
+    handleErr(e);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function stbSave() {
+  setBusy(true);
+  try {
+    const md = SB.toMarkdown(S.stB), data = JSON.stringify(S.stB);
+    await api.saveStrategy(md, data);
+    S.strategy = md; S.strategyData = data;
+    S.stB = null; S.stPreview = false;
+    renderStrategy();
+    window.scrollTo(0, 0);
+    toast(tr("Стратегия сохранена"));
+  } catch (e) {
+    handleErr(e);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -812,7 +998,7 @@ async function stUpload(files, mode) {
         md = St.replaceImage(md, f.name, url);
         done++;
       }
-      if (done) { await api.saveStrategy(md); S.strategy = md; }
+      if (done) { await api.saveStrategy(md, S.strategyData); S.strategy = md; }
       renderStrategy();
     }
     toast(tr("Загружено картинок: {n}", { n: done }) + (skipped ? " · " + tr("не подошло по имени: {n}", { n: skipped }) : ""));
@@ -827,7 +1013,7 @@ async function stSave() {
   setBusy(true);
   try {
     await api.saveStrategy(S.stEdit);
-    S.strategy = S.stEdit;
+    S.strategy = S.stEdit; S.strategyData = "";
     S.stEdit = null; S.stPreview = false;
     renderStrategy();
     window.scrollTo(0, 0);
@@ -840,9 +1026,21 @@ async function stSave() {
 }
 
 function strategyClick(b) {
+  if (builderClick(b)) return true;
   const a = b.dataset.act;
+  if (a === "st-build") { openBuilder(SB.starter(LANG)); return true; }
+  if (a === "st-totext") {
+    if (!confirm(tr("В текстовом режиме конструктор отключится: страница будет правиться только текстом (Markdown). Перейти?"))) return true;
+    S.stEdit = SB.toMarkdown(S.stB); S.stB = null; S.stPreview = false; renderStrategy(); return true;
+  }
+  if (S.stB && a === "st-cancel") {
+    if (JSON.stringify(S.stB) !== S.stBOrig && !confirm(tr("Закрыть без сохранения?"))) return true;
+    S.stB = null; S.stPreview = false; renderStrategy(); return true;
+  }
+  if (S.stB && a === "st-save") { stbSave(); return true; }
   if (a === "st-template") { S.stEdit = St.TEMPLATE[LANG] || St.TEMPLATE.ru; S.stPreview = false; renderStrategy(); return true; }
   if (a === "st-blank") { S.stEdit = ""; S.stPreview = false; renderStrategy(); return true; }
+  if (a === "st-edit" && SB.parse(S.strategyData)) { openBuilder(SB.parse(S.strategyData)); return true; }
   if (a === "st-edit") { S.stEdit = S.strategy || ""; S.stPreview = false; renderStrategy(); window.scrollTo(0, 0); return true; }
   if (a === "st-cancel") {
     if (S.stEdit !== (S.strategy || "") && !confirm(tr("Закрыть без сохранения?"))) return true;
@@ -1459,6 +1657,7 @@ function events() {
   $("#view").addEventListener("input", (e) => {
     if (e.target.dataset.rnote && S.run) { S.run.note = e.target.value; saveRun(); }
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
+    if (e.target.dataset.stb && S.stB) { const [p, key] = clPath(S.stB, e.target.dataset.stb); p[key] = e.target.value; if (e.target.classList.contains("stb-area")) autoGrow(e.target); return; }
     if (e.target.dataset.clp && S.clDraft) { const [p, key] = clPath(S.clDraft, e.target.dataset.clp); p[key] = e.target.value; }
   });
   $("#view").addEventListener("mousemove", chartTip);
@@ -1469,6 +1668,7 @@ function events() {
     if (!files.length) return;
     if (e.target.dataset.stimg) stUpload(files, "insert");
     if (e.target.dataset.stmissing) stUpload(files, "missing");
+    if (e.target.dataset.stbimg && S.stB) stbUpload(files, e.target.dataset.stbimg);
     e.target.value = "";
   });
   $("#viewer").addEventListener("click", (e) => {
