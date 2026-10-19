@@ -187,6 +187,7 @@ function pickIdea(name) {
 function render() {
   document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect"].includes(S.view));
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === S.view));
+  $("#apiBtn")?.classList.toggle("on", S.view === "connect");
   $("#fab").hidden = S.view !== "journal";
   if (S.view === "journal") renderJournal();
   else if (S.view === "dashboard") renderDashboard();
@@ -247,7 +248,6 @@ function renderJournal() {
       <select id="fRes">${opt([...DEF.result, { v: "_empty", t: tr("Без результата") }], f.result, tr("Любой результат"))}</select>
       <select id="fMonth">${opt(months, f.month, tr("Все месяцы"))}</select>
       <input id="fQ" type="search" placeholder="${tr("Поиск")}" value="${esc(f.q)}">
-      ${isBT() ? "" : `<button type="button" class="btn ghost sm cx-open" data-act="cx-open" title="${tr("Перенос сделок с бирж и торговых счетов")}">⇅ ${tr("Подключения")}</button>`}
     </div>
     <div id="summary" class="summary"></div>
     <div id="list"></div>`;
@@ -268,8 +268,9 @@ function renderList() {
   const done = rows.filter((t) => res(t) !== "");
   const w = done.filter((t) => res(t) === "Win").length, nb = done.filter((t) => res(t) !== "BE").length;
   const p = rows.reduce((s, t) => s + (isNum(t.v[COL.profit]) ? num(t.v[COL.profit]) : 0), 0);
-  $("#summary").innerHTML = `<span>${tr("{n} сделок", { n: rows.length })}</span><span>WinRate ${fmtPct(nb ? w / nb : 0)}</span>
-    <span class="${sgn(p)}">${fmtSigned(p)}%</span>`;
+  $("#summary").innerHTML = `<div class="sum-cell"><span class="sum-k">${tr("Сделок")}</span><b>${rows.length}</b></div>
+    <div class="sum-cell"><span class="sum-k">WinRate</span><b>${fmtPct(nb ? w / nb : 0)}</b></div>
+    <div class="sum-cell"><span class="sum-k">${tr("Результат")}</span><b class="${sgn(p)}">${fmtSigned(p)}%</b></div>`;
 
   if (!rows.length) {
     $("#list").innerHTML = `<div class="empty">${isBT() && !trades().length
@@ -312,7 +313,7 @@ function renderList() {
     if (day !== lastDay) {
       const same = desc.filter((x) => { const y = parseDT(x.v[COL.open]); return !Number.isNaN(y) && fmtDay(Math.floor(y)) === day; });
       const dp = same.reduce((a, x) => a + (isNum(x.v[COL.profit]) ? num(x.v[COL.profit]) : 0), 0);
-      head = `<div class="day"><span>${esc(day || tr("Без даты"))}</span><span class="${sgn(dp)}">${fmtSigned(dp)}%</span></div>`;
+      head = (lastDay !== null ? "</div>" : "") + `<div class="day"><span>${esc(day || tr("Без даты"))}</span><span class="${sgn(dp)}">${fmtSigned(dp)}%</span></div><div class="day-group">`;
       lastDay = day;
     }
     const time = Number.isNaN(s) ? "" : fmtDT(s).slice(-5);
@@ -339,7 +340,7 @@ function renderList() {
       </div>`;
   }).join("");
 
-  $("#list").innerHTML = table + `<div class="cards">${cards}</div>`;
+  $("#list").innerHTML = table + `<div class="cards">${cards}${cards ? "</div>" : ""}</div>`;
 }
 
 // ---------------- Dashboard ----------------
@@ -949,7 +950,7 @@ function renderConnect() {
   const pv = CX.preview;
   $("#view").innerHTML = `<div class="cx-page">
     <div class="cx-head"><button type="button" class="btn ghost sm" data-act="cx-back">← ${tr("Журнал")}</button>
-      <h2>${tr("Подключения")}</h2></div>
+      <h2>API</h2><span class="muted">${tr("биржи и торговые счета")}</span></div>
     <div class="hint cx-note">${tr("Сделки переносятся в журнал сами: время, пара, направление, результат, Profit, а для MT — ещё Risk и RR по стопу. POI, вход, скриншоты и заметки дописываешь ты. Ключи хранятся только на этом устройстве и уходят только на сайт биржи или MetaApi. Создавай ключи только для чтения.")}</div>
     ${CX.msg ? `<div class="panel cx-msg">${esc(CX.msg)}</div>` : ""}
     ${pv ? previewHtml(pv) : `
@@ -1974,6 +1975,7 @@ function events() {
   $$(".tab").forEach((b) => (b.onclick = () => setView(b.dataset.view)));
   $("#fab").onclick = () => openEditor(null);
   $("#newsBar").onclick = () => setView("news");
+  $("#apiBtn").onclick = () => setView("connect");
   $("#refresh").onclick = () => reload().then((ok) => ok && toast(tr("Обновлено")));
   $("#logout").onclick = () => { if (confirm(tr("Выйти из Google-аккаунта в приложении?"))) { auth.logout(); showLogin(); } };
   $("#view").addEventListener("click", (e) => {

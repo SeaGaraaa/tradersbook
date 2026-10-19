@@ -418,4 +418,6 @@ export const EN = {
   "Через {t}. Опасно торговать": "In {t}. Risky to trade",
   "Не удалось загрузить календарь — проверь интернет": "Couldn’t load the calendar — check your connection",
   "Браузер не разрешил уведомления": "The browser didn’t allow notifications",
+  "API: биржи и торговые счета": "API: exchanges and trading accounts",
+  "биржи и торговые счета": "exchanges and trading accounts",
 };

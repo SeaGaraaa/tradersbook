@@ -622,3 +622,49 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .nw-filters .seg button { padding-left: 9px; padding-right: 9px; }
 }
 @media (max-width: 420px) { .tab { font-size: 10.5px; padding: 10px 1px; } }
+
+/* ---------- шапка: API, нижние вкладки, список сделок (20.10) ---------- */
+.api-btn { font-size: 12px; font-weight: 800; letter-spacing: .04em; }
+.api-btn.on { border-color: var(--accent); color: var(--accent); }
+.tab-i { display: none; }
+.tab { position: relative; }
+
+.summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 6px 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.sum-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; min-width: 0; }
+.sum-cell + .sum-cell { border-left: 1px solid var(--line); }
+.sum-k { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.sum-cell b { font-size: 17px; font-variant-numeric: tabular-nums; color: var(--text); }
+.sum-cell b.pos { color: var(--win); } .sum-cell b.neg { color: var(--lose); }
+
+.day { margin: 18px 6px 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.day-group { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.day-group > .card { border: 0; border-radius: 0; margin: 0; background: transparent; padding: 12px 14px 12px 16px; position: relative; }
+.day-group > .card + .card { border-top: 1px solid var(--line); }
+.day-group > .card::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--line); opacity: .9; }
+.day-group > .card.win::before { background: var(--win); }
+.day-group > .card.lose::before { background: var(--lose); }
+.day-group > .card.be::before { background: var(--be); }
+.day-group > .card:active { background: var(--panel2); }
+
+@media (max-width: 640px) {
+  .tabs {
+    padding: 6px 4px calc(4px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
+    border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  }
+  .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0 6px; border-radius: 0; background: none !important; color: var(--muted); min-width: 0; }
+  .tab-i { display: block; width: 46px; height: 28px; padding: 4px 12px; border-radius: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: background .15s, color .15s; }
+  .tab-l { font-size: 10.5px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .tab.active { color: var(--accent); }
+  .tab.active .tab-i { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .tab.active .tab-l { font-weight: 700; }
+  .tab.hot::after { top: 4px; right: calc(50% - 20px); }
+  .fab { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .day-group > .card { padding: 12px 12px 12px 15px; }
+  .sum-cell b { font-size: 16px; }
+}
+@media (max-width: 420px) { .tab { font-size: inherit; padding: 4px 0 6px; } }
+.btn.icon.api-btn { width: auto; min-width: 44px; padding: 0 10px; }
+@media (min-width: 641px) { .summary { max-width: 520px; } }
+.day-group > .card::before { top: 16px; bottom: 16px; opacity: .75; }
