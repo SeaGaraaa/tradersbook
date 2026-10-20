@@ -166,12 +166,6 @@ function layout(ctx, run, img, draw) {
   for (const g of d.general) section(g.title, g.items);
   if (setup) {
     section(setup.name, setup.items, setup.entry ? `— ${setup.entry}` : "");
-    if (setup.no) {
-      ctx.font = `400 22px ${FONT}`;
-      y += 6;
-      for (const line of wrap(ctx, setup.no, inner)) { T(line, PAD, y, 22, C.lose); y += 32; }
-      breaks.push(y);
-    }
   }
   // «нет» по пунктам, которых уже нет в шаблоне
   const known = new Set([...d.general.flatMap((g) => g.items.map(([id]) => id)), ...(setup?.items.map(([id]) => id) || [])]);

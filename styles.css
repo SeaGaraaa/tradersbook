@@ -888,3 +888,30 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .clx-verdict { width: 100%; }
   .clx-verdict .chk-v { display: block; text-align: center; }
 }
+
+/* ---------- редактор чек-листа ---------- */
+.cle2 .clx-head .clx-actions { margin-left: auto; }
+.cle2-limit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.cle2-limit input { width: 72px; text-align: center; font-size: 16px; font-weight: 700; }
+.cle2-area { width: 100%; resize: none; overflow: hidden; font-size: 14px; line-height: 1.45; min-height: 38px; }
+.cle2-card { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow: hidden; }
+.cle2-head { display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+.cle2-head input { flex: 1; min-width: 0; font-weight: 700; font-size: 15px; }
+.cle2-head .cle2-entry { font-weight: 500; font-size: 13px; color: var(--muted); }
+.cle2-items { display: flex; flex-direction: column; }
+.cle2-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; }
+.cle2-item + .cle2-item { border-top: 1px solid var(--line); }
+.cle2-item .cle2-area { border-color: transparent; background: transparent; padding: 7px 8px; }
+.cle2-item .cle2-area:hover { border-color: var(--line); }
+.cle2-item .cle2-area:focus { border-color: var(--accent); background: var(--panel); }
+.cle2-item .chip-x { margin-top: 7px; flex: none; }
+.cle2-num { flex: none; width: 22px; height: 22px; margin-top: 8px; border-radius: 50%; background: var(--panel2); color: var(--muted); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.cle2-add { border: 0; border-top: 1px dashed var(--line); background: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; padding: 10px 12px; text-align: left; cursor: pointer; }
+.cle2-add:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.cle2-empty { font-size: 13px; }
+@media (max-width: 640px) {
+  .cle2 .clx-head .clx-actions { width: 100%; justify-content: flex-end; }
+  .cle2-head { flex-wrap: wrap; }
+  .cle2-head .cle2-entry { order: 3; flex-basis: 100%; }
+  .cle2-num { display: none; }
+}

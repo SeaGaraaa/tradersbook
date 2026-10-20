@@ -1606,7 +1606,7 @@ function runVerdict(c) {
 }
 
 function renderChecklist() {
-  if (S.clDraft) { $("#view").innerHTML = `<div class="cl-page">${checklistEditor()}</div>`; return; }
+  if (S.clDraft) { $("#view").innerHTML = `<div class="cl-page">${checklistEditor()}</div>`; $$(".cle2-area").forEach(autoGrow); return; }
   const c = S.run;
   const d = CL.current();
   const v = runVerdict(c);
@@ -1659,7 +1659,7 @@ function renderChecklist() {
           <button type="button" class="chip add" data-act="setup-add">${tr("+ сетап")}</button></div>
       </div>
       ${d.general.map((g) => block(g.title, g.items)).join("")}
-      ${setup ? block(setup.name, setup.items, setup.entry || "", setup.no ? `<div class="clx-warn">${esc(setup.no)}</div>` : "") : ""}
+      ${setup ? block(setup.name, setup.items, setup.entry || "") : ""}
       <div class="nw-group">
         <div class="nw-ghead"><span>${tr("Заметка")}</span></div>
         <textarea rows="2" data-rnote="1" placeholder="${tr("Что видишь на графике, почему да / нет")}">${esc(c.note)}</textarea>
@@ -1783,34 +1783,53 @@ async function runDelete(n) {
 // Правка шаблона чек-листа (черновик S.clDraft, сохраняется кнопкой; хранится в Lists!F2).
 function checklistEditor() {
   const d = S.clDraft;
-  const items = (path, list) => list.map(([, text], i) => `
-    <div class="cle-item"><textarea rows="2" data-clp="${path}.${i}.1">${esc(text)}</textarea>
-      <button type="button" class="chip-x" data-cldel="${path}.${i}" aria-label="${tr("Удалить пункт")}">×</button></div>`).join("")
-    + `<button type="button" class="btn ghost sm" data-cladd="${path}">${tr("+ пункт")}</button>`;
-  return `<section class="panel checklist editing">
-    <h3>${tr("Чек-лист — правка шаблона")}</h3>
-    <label>${tr("Общая заметка")}<textarea rows="2" data-clp="note">${esc(d.note)}</textarea></label>
-    <label class="cle-limit">${tr("Сколько «нет» запрещают сделку")}
-      <input type="number" min="1" max="20" inputmode="numeric" data-clp="limit" value="${esc(d.limit ?? CL.DEFAULT_LIMIT)}"></label>
-    <div class="cle-sec">${tr("Общий блок — проходится всегда")}</div>
-    ${d.general.map((g, gi) => `<div class="cle-group">
-      <div class="cle-row"><input data-clp="general.${gi}.title" value="${esc(g.title)}" placeholder="${tr("Название группы")}">
-        <button type="button" class="chip-x" data-cldel="general.${gi}" aria-label="${tr("Удалить группу")}">×</button></div>
-      ${items(`general.${gi}.items`, g.items)}</div>`).join("")}
-    <button type="button" class="btn ghost sm" data-cladd="general">${tr("+ группа")}</button>
-    <div class="cle-sec" id="cle-setups">${tr("Сетапы — добавляется блок выбранного сетапа")}</div>
-    ${d.setups.map((s, si) => `<div class="cle-group">
-      <div class="cle-row"><input data-clp="setups.${si}.name" value="${esc(s.name)}" placeholder="${tr("Название сетапа")}">
-        <input data-clp="setups.${si}.entry" value="${esc(s.entry || "")}" placeholder="${tr("Вход (например, от Confirm)")}">
-        <button type="button" class="chip-x" data-cldel="setups.${si}" aria-label="${tr("Удалить сетап")}">×</button></div>
-      ${items(`setups.${si}.items`, s.items)}
-      <textarea rows="2" data-clp="setups.${si}.no" placeholder="${tr("Когда сделки нет (подсказка)")}">${esc(s.no || "")}</textarea></div>`).join("")}
-    <button type="button" class="btn ghost sm" data-cladd="setups">${tr("+ сетап")}</button>
-    <div class="hint">${tr("Шаблон хранится в твоей Google-таблице (лист {sheet}, ячейка F2). Сохранённые чек-листы не меняются: в них записаны и коды, и тексты пунктов.", { sheet: esc(CONFIG.listsSheet) })}</div>
-    <div class="cle-actions">
-      <button type="button" class="btn primary" data-act="cl-save">${tr("Сохранить шаблон")}</button>
-      <button type="button" class="btn ghost" data-act="cl-cancel">${tr("Отмена")}</button>
-      <button type="button" class="btn ghost" data-act="cl-reset">${tr("Стандартный шаблон")}</button>
+  const items = (path, list) => `<div class="cle2-items">${list.map(([, text], i) => `
+      <div class="cle2-item"><span class="cle2-num">${i + 1}</span><textarea rows="1" class="cle2-area" data-clp="${path}.${i}.1" placeholder="${tr("Текст пункта")}">${esc(text)}</textarea>
+        <button type="button" class="chip-x" data-cldel="${path}.${i}" aria-label="${tr("Удалить пункт")}">×</button></div>`).join("")}
+      <button type="button" class="cle2-add" data-cladd="${path}">${tr("+ пункт")}</button></div>`;
+  return `<section class="panel nw-filters clx cle2">
+    <div class="clx-head">
+      <img src="icons/tb-checklist.png" alt="" class="cl-logo">
+      <div class="clx-title"><h3>${tr("Редактор чек-листа")}</h3><div class="muted">${tr("Пункты, группы и сетапы под твою стратегию")}</div></div>
+      <div class="clx-actions"><button type="button" class="btn ghost sm" data-act="cl-cancel">${tr("Отмена")}</button>
+        <button type="button" class="btn primary sm" data-act="cl-save">${tr("Сохранить шаблон")}</button></div>
+    </div>
+    <div class="nw-group">
+      <div class="nw-ghead"><span>${tr("Правило")}</span></div>
+      <label class="cle2-limit">${tr("Сделки нет при")}
+        <input type="number" min="1" max="20" inputmode="numeric" data-clp="limit" value="${esc(d.limit ?? CL.DEFAULT_LIMIT)}">
+        ${tr("«нет» и больше")}</label>
+    </div>
+    <div class="nw-group">
+      <div class="nw-ghead"><span>${tr("Общая заметка")} <em>${tr("видна над чек-листом")}</em></span></div>
+      <textarea rows="2" class="cle2-area" data-clp="note" placeholder="${tr("Например: время UTC+3, перед красной новостью не торгую")}">${esc(d.note)}</textarea>
+    </div>
+    <div class="nw-group">
+      <div class="nw-ghead"><span>${tr("Общий блок")} <em>${tr("проходится всегда")}</em></span>
+        <button type="button" class="link-btn" data-cladd="general">${tr("+ группа")}</button></div>
+      ${d.general.map((g, gi) => `<div class="cle2-card">
+        <div class="cle2-head"><input data-clp="general.${gi}.title" value="${esc(g.title)}" placeholder="${tr("Название группы")}">
+          <button type="button" class="chip-x" data-cldel="general.${gi}" aria-label="${tr("Удалить группу")}">×</button></div>
+        ${items(`general.${gi}.items`, g.items)}</div>`).join("")}
+    </div>
+    <div class="nw-group" id="cle-setups">
+      <div class="nw-ghead"><span>${tr("Сетапы")} <em>${tr("блок добавляется, когда сетап выбран")}</em></span>
+        <button type="button" class="link-btn" data-cladd="setups">${tr("+ сетап")}</button></div>
+      ${d.setups.length ? "" : `<div class="muted cle2-empty">${tr("Сетапов пока нет")}</div>`}
+      ${d.setups.map((s, si) => `<div class="cle2-card">
+        <div class="cle2-head"><input data-clp="setups.${si}.name" value="${esc(s.name)}" placeholder="${tr("Название сетапа")}">
+          <input class="cle2-entry" data-clp="setups.${si}.entry" value="${esc(s.entry || "")}" placeholder="${tr("Вход (например, от Confirm)")}">
+          <button type="button" class="chip-x" data-cldel="setups.${si}" aria-label="${tr("Удалить сетап")}">×</button></div>
+        ${items(`setups.${si}.items`, s.items)}</div>`).join("")}
+    </div>
+    <div class="nw-group nw-setbox">
+      <div class="hint">${tr("Шаблон хранится в твоей Google-таблице (лист {sheet}, ячейка F2). Сохранённые чек-листы не меняются: в них записаны и коды, и тексты пунктов.", { sheet: esc(CONFIG.listsSheet) })}</div>
+      <div class="clx-actions">
+        <button type="button" class="btn primary" data-act="cl-save">${tr("Сохранить шаблон")}</button>
+        <button type="button" class="btn ghost" data-act="cl-cancel">${tr("Отмена")}</button>
+        <span class="grow"></span>
+        <button type="button" class="link-btn" data-act="cl-reset">${tr("Вернуть стандартный шаблон")}</button>
+      </div>
     </div>
   </section>`;
 }
@@ -2229,7 +2248,7 @@ function events() {
       return;
     }
     if (e.target.dataset.stb && S.stB) { const [p, key] = clPath(S.stB, e.target.dataset.stb); p[key] = e.target.value; if (e.target.classList.contains("stb-area")) autoGrow(e.target); return; }
-    if (e.target.dataset.clp && S.clDraft) { const [p, key] = clPath(S.clDraft, e.target.dataset.clp); p[key] = e.target.value; }
+    if (e.target.dataset.clp && S.clDraft) { const [p, key] = clPath(S.clDraft, e.target.dataset.clp); p[key] = e.target.value; if (e.target.classList.contains("cle2-area")) autoGrow(e.target); }
   });
   $("#view").addEventListener("mousemove", chartTip);
   $("#view").addEventListener("click", chartTip);
