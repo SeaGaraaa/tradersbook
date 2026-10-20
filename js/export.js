@@ -293,3 +293,111 @@ export function buildPdf(pages) {
   for (const b of parts) { out.set(b, o); o += b.length; }
   return out;
 }
+
+// ---------- AI-разбор журнала: PNG / PDF ----------
+// report: { period, mode, model, at, data: { verdict, score, score_reason, mistakes, rule_violations, patterns, strengths, actions, data_gaps } }
+const SEV = { high: "#ef4444", medium: "#f59e0b", low: "#8a93a3" };
+function aiLayout(ctx, rep, img, draw) {
+  const d = rep.data, inner = W - PAD * 2;
+  let y = PAD;
+  const breaks = [];
+  const T = (text, x, yy, size, color, weight = 400, align = "left") => {
+    if (!draw) return;
+    ctx.font = `${weight} ${size}px ${FONT}`; ctx.fillStyle = color; ctx.textBaseline = "top"; ctx.textAlign = align;
+    ctx.fillText(text, x, yy); ctx.textAlign = "left";
+  };
+  const para = (text, x, size, color, maxW, weight = 400, lh = 1.45) => {
+    ctx.font = `${weight} ${size}px ${FONT}`;
+    for (const ln of wrap(ctx, text, maxW)) { T(ln, x, y, size, color, weight); y += Math.round(size * lh); }
+  };
+  // шапка
+  if (draw && img) ctx.drawImage(img, PAD, y, 84, 84);
+  T("Trader'sBook", PAD + 104, y + 4, 40, C.text, 700);
+  T(tr("AI-разбор журнала"), PAD + 104, y + 52, 26, C.accent, 600);
+  T(rep.period, W - PAD, y + 10, 24, C.muted, 400, "right");
+  T(`${tr("Сделок")}: ${rep.trades}`, W - PAD, y + 44, 22, C.muted, 400, "right");
+  y += 84 + 36;
+  // карточка с оценкой
+  ctx.font = `400 26px ${FONT}`;
+  const vLines = wrap(ctx, d.verdict, inner - 230);
+  ctx.font = `400 21px ${FONT}`;
+  const rLines = wrap(ctx, d.score_reason, inner - 230);
+  const boxH = Math.max(190, 56 + vLines.length * 38 + rLines.length * 30 + 20);
+  const sc = d.score >= 75 ? C.win : d.score >= 50 ? "#f59e0b" : C.lose;
+  if (draw) {
+    ctx.fillStyle = C.panel; roundRect(ctx, PAD, y, inner, boxH, 20); ctx.fill();
+    ctx.strokeStyle = sc; ctx.lineWidth = 2; ctx.stroke();
+    ctx.lineWidth = 12; ctx.strokeStyle = C.line; ctx.beginPath(); ctx.arc(PAD + 100, y + boxH / 2, 64, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.arc(PAD + 100, y + boxH / 2, 64, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * d.score / 100); ctx.stroke();
+  }
+  T(String(d.score), PAD + 100, y + boxH / 2 - 26, 48, sc, 800, "center");
+  T(tr("дисциплина"), PAD + 100, y + boxH / 2 + 26, 16, C.muted, 600, "center");
+  let yy = y + 28;
+  vLines.forEach((ln) => { T(ln, PAD + 210, yy, 26, C.text, 600); yy += 38; });
+  yy += 8;
+  rLines.forEach((ln) => { T(ln, PAD + 210, yy, 21, C.muted); yy += 30; });
+  y += boxH + 30;
+  breaks.push(y);
+  const section = (title, list, one) => {
+    if (!list.length) return;
+    T(title.toUpperCase(), PAD, y, 21, C.muted, 700);
+    y += 40;
+    if (draw) { ctx.fillStyle = C.line; ctx.fillRect(PAD, y - 10, inner, 2); }
+    list.forEach((it) => { one(it); y += 16; if (draw) { ctx.fillStyle = C.line; ctx.fillRect(PAD, y - 8, inner, 1); } breaks.push(y); });
+    y += 18;
+  };
+  const ids = (a) => (Array.isArray(a) && a.length ? " · " + a.map((n) => "#" + String(n).replace("#", "")).join(" ") : "");
+  section(tr("Ошибки"), d.mistakes, (m) => {
+    if (draw) { ctx.fillStyle = SEV[m.severity] || SEV.low; ctx.beginPath(); ctx.arc(PAD + 8, y + 16, 8, 0, Math.PI * 2); ctx.fill(); }
+    ctx.font = `700 26px ${FONT}`;
+    const tl = wrap(ctx, (m.title || "") + ids(m.trades), inner - 30);
+    tl.forEach((ln) => { T(ln, PAD + 30, y, 26, C.text, 700); y += 36; });
+    if (m.detail) para(m.detail, PAD + 30, 22, C.muted, inner - 30);
+    if (m.fix) para("→ " + m.fix, PAD + 30, 22, C.accent, inner - 30, 600);
+  });
+  section(tr("Нарушения правил стратегии"), d.rule_violations, (r) => {
+    para((r.rule || "") + ids(r.trades), PAD, 25, C.lose, inner, 700);
+    if (r.detail) para(r.detail, PAD, 22, C.muted, inner);
+  });
+  section(tr("Закономерности"), d.patterns, (p) => { para(p.title || "", PAD, 25, C.text, inner, 700); if (p.detail) para(p.detail, PAD, 22, C.muted, inner); });
+  section(tr("Что получается"), d.strengths, (s) => para("✓ " + s, PAD, 23, C.win, inner, 500));
+  let i = 0;
+  section(tr("План на следующий период"), d.actions, (s) => para(`${++i}. ${s}`, PAD, 23, C.text, inner, 500));
+  section(tr("Чего не хватает в журнале"), d.data_gaps, (s) => para("• " + s, PAD, 22, C.muted, inner));
+  T(`${tr("Разбор сделан ИИ ({m}) по данным журнала. Это не инвестиционная рекомендация.", { m: rep.model })}`, PAD, y + 10, 18, C.muted);
+  T("Trader'sBook · seagaraaa.github.io/tradersbook", PAD, y + 40, 18, C.muted);
+  y += 90;
+  breaks.push(y);
+  return { height: y, breaks };
+}
+
+async function renderAi(rep) {
+  const img = await logo();
+  const probe = document.createElement("canvas").getContext("2d");
+  const { height, breaks } = aiLayout(probe, rep, img, false);
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = Math.ceil(height);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, canvas.height);
+  aiLayout(ctx, rep, img, true);
+  return { canvas, breaks };
+}
+
+export async function exportAi(rep, fmt) {
+  const { canvas, breaks } = await renderAi(rep);
+  const name = `TB-AI-review_${new Date(rep.at).toISOString().slice(0, 10)}.${fmt}`;
+  if (fmt === "png") { download(await new Promise((r) => canvas.toBlob(r, "image/png")), name); return; }
+  const cuts = pageCuts(canvas.height, breaks);
+  const pages = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const page = document.createElement("canvas");
+    page.width = W; page.height = PAGE_H;
+    const ctx = page.getContext("2d");
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, PAGE_H);
+    const h = cuts[i + 1] - cuts[i];
+    ctx.drawImage(canvas, 0, cuts[i], W, h, 0, i ? PAD / 2 : 0, W, h);
+    const blob = await new Promise((r) => page.toBlob(r, "image/jpeg", 0.92));
+    pages.push({ bytes: new Uint8Array(await blob.arrayBuffer()), w: W, h: PAGE_H });
+  }
+  download(new Blob([buildPdf(pages)], { type: "application/pdf" }), name);
+}

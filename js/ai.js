@@ -1,0 +1,133 @@
+// AI-разбор торгового журнала (Claude API напрямую из браузера, ключ пользователя хранится только на устройстве).
+import { lsGet, lsSet, parseDT, num, fmtDT } from "./util.js";
+
+export const MODELS = [
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5 — рекомендую (быстро и точно)"],
+  ["claude-opus-5-5", "Claude Opus 5.5 — глубже, дороже"],
+  ["claude-haiku-5-5", "Claude Haiku 5.5 — дешевле, проще"],
+];
+const KEY = "tj.ai", REPORTS = "tj.ai.reports";
+
+export function settings() { try { return { enabled: false, key: "", model: MODELS[0][0], ...JSON.parse(lsGet(KEY) || "{}") }; } catch { return { enabled: false, key: "", model: MODELS[0][0] }; } }
+export function saveSettings(s) { lsSet(KEY, JSON.stringify(s)); }
+export const enabled = () => settings().enabled;
+
+export function reports() { try { return JSON.parse(lsGet(REPORTS) || "[]"); } catch { return []; } }
+export function addReport(r) { lsSet(REPORTS, JSON.stringify([r, ...reports()].slice(0, 12))); }
+export function removeReport(id) { lsSet(REPORTS, JSON.stringify(reports().filter((x) => x.id !== id))); }
+
+// Период в «настенном» времени таблицы (serial). Неделя — с понедельника.
+export function periodRange(kind, from, to) {
+  const now = new Date();
+  const day = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5 + 25569;
+  const today = day(now);
+  const wd = (now.getDay() + 6) % 7; // 0 — понедельник
+  const m0 = Date.UTC(now.getFullYear(), now.getMonth(), 1) / 864e5 + 25569;
+  const pm0 = Date.UTC(now.getFullYear(), now.getMonth() - 1, 1) / 864e5 + 25569;
+  switch (kind) {
+    case "week": return [today - wd, today + 1];
+    case "lastweek": return [today - wd - 7, today - wd];
+    case "month": return [m0, today + 1];
+    case "lastmonth": return [pm0, m0];
+    case "3m": return [today - 91, today + 1];
+    case "custom": {
+      const f = from ? Date.parse(from + "T00:00:00Z") / 864e5 + 25569 : -Infinity;
+      const t = to ? Date.parse(to + "T00:00:00Z") / 864e5 + 25569 + 1 : Infinity;
+      return [f, t];
+    }
+    default: return [-Infinity, Infinity];
+  }
+}
+
+const cut = (s, n) => { s = String(s ?? "").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
+
+// Данные для разбора: только то, что есть в журнале. Ссылки на скриншоты не отправляются.
+export function buildInput({ trades, numbers, stats, period, strategy, runs, itemText, mode, lang, from, to }) {
+  const rows = trades.map((t) => {
+    const v = t.v, risk = num(v[9]), profit = num(v[10]);
+    return {
+      "#": numbers.get(t.n), open: fmtDT(v[0]), close: fmtDT(v[1]), dir: v[2], pair: v[3], session: v[4], poi: v[5], entry: v[6],
+      result: v[7], rr_plan: v[8], risk_pct: v[9], profit_pct: v[10], r: risk > 0 && Number.isFinite(profit) ? +(profit / risk).toFixed(2) : null,
+      exit: cut(v[18], 200), notes: cut(v[19], 400), ...(mode === "bt" ? { idea: v[21] } : {}),
+      screenshots: [11, 12, 13, 14, 15, 16, 17, 20].some((k) => String(v[k] || "").trim()) ? "есть" : "нет",
+    };
+  });
+  const k = stats.kpi;
+  const fmt = (b) => b.map((x) => ({ name: x.name, trades: x.trades, win: x.win, winrate: Math.round(x.winrate * 100) + "%", ...(x.profit != null ? { profit_pct: +x.profit.toFixed(2) } : {}) })).filter((x) => x.trades);
+  const no = new Map();
+  for (const r of runs) for (const id of r.no) no.set(id, (no.get(id) || 0) + 1);
+  return {
+    language: lang === "en" ? "English" : "Russian",
+    journal: mode === "bt" ? "backtest" : "live account",
+    period: { from: from || "начало журнала", to: to || "сегодня", trades: rows.length },
+    totals: {
+      trades_with_result: k.total, winrate: Math.round(k.winrate * 100) + "%", profit_pct: +k.profit.toFixed(2), total_r: +k.totalR.toFixed(2),
+      expectancy_r: +k.expectancy.toFixed(2), profit_factor: k.pf == null ? "нет убыточных" : +k.pf.toFixed(2), max_drawdown_pct: +k.maxDD.toFixed(2),
+      avg_rr_wins: +k.avgRR.toFixed(2), trades_with_risk: k.withRisk,
+    },
+    by_pair: fmt(stats.pair), by_session: fmt(stats.session), by_poi: fmt(stats.poi), by_entry: fmt(stats.entry),
+    by_weekday: period.days.map((d) => ({ day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.day], trades: d.trades, profit_pct: +d.profit.toFixed(2), winrate: Math.round(d.winrate * 100) + "%" })),
+    streaks: { max_wins: period.maxWinStreak, max_losses: period.maxLossStreak },
+    checklists_in_period: runs.length ? {
+      total: runs.length, no_trade: runs.filter((r) => r.verdict === "Сделки нет").length,
+      most_failed_items: [...no.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id, n]) => ({ item: itemText(id), times: n })),
+    } : "чек-листы за период не заполнялись",
+    strategy: strategy ? cut(strategy.replace(/!\[[^\]]*\]\([^)]*\)/g, ""), 30000) : "стратегия не заполнена",
+    trades: rows,
+  };
+}
+
+const SYSTEM = `You are a strict, experienced trading coach reviewing a trader's journal.
+Rules:
+- Use ONLY the data provided. Never invent prices, levels, news or results. If something can't be judged from the data, say so in "data_gaps".
+- Always reference trades by their journal number like #12. Every mistake must list the trade numbers it is based on.
+- Judge against the trader's own strategy text when it is provided (risk per trade, number of trades/stops per day, sessions, setups, entry model, RR). Quote the rule briefly. If there is no strategy, use general risk-management principles and say they are general.
+- Look for: risk above the trader's limit, too many trades or losses in a day, revenge trading (quick re-entries after a loss), trading outside the allowed sessions/time, missing stop or risk, moving targets, low RR, setups/pairs/sessions that lose money, missing notes/screenshots, checklist items that fail often.
+- Be honest about sample size: fewer than 30 trades means conclusions about setups are preliminary — state it.
+- Never promise profit. Be concrete, short and practical.
+- Write all text in the language given in "language".
+Return ONLY one JSON object, no markdown, with exactly these keys:
+{"verdict": "2-3 sentence summary of the period",
+ "score": integer 0-100 = discipline score (how well the trader followed their own rules),
+ "score_reason": "one sentence why",
+ "mistakes": [{"title": "...", "severity": "high|medium|low", "trades": [numbers], "detail": "what happened, with numbers", "fix": "what to do instead"}],
+ "rule_violations": [{"rule": "the rule from the strategy", "trades": [numbers], "detail": "..."}],
+ "patterns": [{"title": "...", "detail": "with numbers: pairs/sessions/weekdays/setups"}],
+ "strengths": ["..."],
+ "actions": ["concrete action for the next period"],
+ "data_gaps": ["what is missing in the journal to analyse better"]}
+Sort mistakes by severity (high first). Keep each text field under 400 characters.`;
+
+export async function analyze(input, { key, model }) {
+  let res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "content-type": "application/json" },
+      body: JSON.stringify({ model, max_tokens: 8000, system: SYSTEM, messages: [{ role: "user", content: "Trading journal data (JSON):\n" + JSON.stringify(input) }] }),
+    });
+  } catch {
+    throw new Error("Нет связи с Claude API — проверь интернет");
+  }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const m = j?.error?.message || res.statusText;
+    if (res.status === 401) throw new Error("Ключ Anthropic не подошёл — проверь его в разделе API");
+    if (res.status === 429) throw new Error("Слишком много запросов или закончился лимит аккаунта Anthropic: " + m);
+    throw new Error("Claude API: " + m);
+  }
+  const text = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
+  const s = text.indexOf("{"), e = text.lastIndexOf("}");
+  let data;
+  try { data = JSON.parse(text.slice(s, e + 1)); } catch { throw new Error("ИИ вернул ответ не в том формате — попробуй ещё раз"); }
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  return {
+    verdict: String(data.verdict || ""), score: Math.max(0, Math.min(100, Math.round(+data.score || 0))), score_reason: String(data.score_reason || ""),
+    mistakes: arr(data.mistakes), rule_violations: arr(data.rule_violations), patterns: arr(data.patterns),
+    strengths: arr(data.strengths).map(String), actions: arr(data.actions).map(String), data_gaps: arr(data.data_gaps).map(String),
+    usage: j.usage || null,
+  };
+}
+
+export const tradeIds = (list) => (Array.isArray(list) ? list : []).map((x) => parseInt(String(x).replace("#", ""), 10)).filter(Number.isFinite);
+export { parseDT };

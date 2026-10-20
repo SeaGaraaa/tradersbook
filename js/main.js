@@ -4,12 +4,13 @@ import * as api from "./api.js";
 import { compute, period, COL } from "./stats.js";
 import { TF, NUM_COLS, IDEA, SCREENS, CHECK, toForm, formValues, diff } from "./form.js";
 import * as CL from "./checklist.js";
-import { exportPNG, exportPDF } from "./export.js";
+import { exportPNG, exportPDF, exportAi } from "./export.js";
 import * as St from "./strategy.js";
 import * as SB from "./stbuilder.js";
 import * as Conn from "./connect.js";
 import * as News from "./news.js";
 import * as Lot from "./lot.js";
+import * as AI from "./ai.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
@@ -31,7 +32,7 @@ const S = {
   mode: lsGet("tj.mode") === "bt" ? "bt" : "live", // live — реальный счёт, bt — бэктест
   books: { live: { trades: [], sheetId: null }, bt: null },
   lists: { poi: [], entry: [], idea: [], pair: [], session: [] },
-  view: ["journal", "dashboard", "stats", "checklist", "strategy", "news", "lot"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
+  view: ["journal", "dashboard", "stats", "checklist", "strategy", "news", "lot", "ai"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
   run: null, // текущий (несохранённый) чек-лист на вкладке «Чек-лист»
   runs: [], runsSheetId: null, // сохранённые чек-листы (лист Checklists)
   clDraft: null, // правка шаблона чек-листа
@@ -190,6 +191,7 @@ function render() {
   document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect", "lot"].includes(S.view));
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === S.view));
   $("#apiBtn")?.classList.toggle("on", S.view === "connect");
+  aiBtnSync();
   $("#fab").hidden = S.view !== "journal";
   if (S.view === "journal") renderJournal();
   else if (S.view === "dashboard") renderDashboard();
@@ -198,6 +200,7 @@ function render() {
   else if (S.view === "connect") renderConnect();
   else if (S.view === "news") renderNews();
   else if (S.view === "lot") renderLot();
+  else if (S.view === "ai") renderAI();
   else renderStats();
   const top = $("#ideaTop");
   if (top) top.oninput = (e) => pickIdea(e.target.value);
@@ -963,6 +966,7 @@ function renderConnect() {
     <div class="cx-head"><button type="button" class="btn ghost sm" data-act="cx-back">← ${tr("Журнал")}</button>
       <h2>API</h2><span class="muted">${tr("биржи и торговые счета")}</span></div>
     <div class="hint cx-note">${tr("Сделки переносятся в журнал сами: время, пара, направление, результат, Profit, а для MT — ещё Risk и RR по стопу. POI, вход, скриншоты и заметки дописываешь ты. Ключи хранятся только на этом устройстве и уходят только на сайт биржи или MetaApi. Создавай ключи только для чтения.")}</div>
+    ${pv ? "" : aiSettingsHtml()}
     ${CX.msg ? `<div class="panel cx-msg">${esc(CX.msg)}</div>` : ""}
     ${pv ? previewHtml(pv) : `
     <section class="panel"><h3>${tr("Мои подключения")}</h3>
@@ -1437,6 +1441,155 @@ function lotChange(t) {
   if (t.dataset.ltsel === "acc") { ltSet({ acc: t.value }, true); return true; }
   if (t.dataset.ltsel === "symsel") { ltSet(t.value === "__other" ? { sym: "", otherMode: true, entry: "", sl: "", tp: "" } : { sym: t.value, otherMode: false, entry: "", sl: "", tp: "" }, true); return true; }
   return false;
+}
+
+// ---------------- AI-разбор журнала ----------------
+const AIV = { kind: "month", from: "", to: "", busy: false, current: null };
+const AI_PERIODS = [["week", "Эта неделя"], ["lastweek", "Прошлая неделя"], ["month", "Этот месяц"], ["lastmonth", "Прошлый месяц"], ["3m", "3 месяца"], ["all", "Всё время"], ["custom", "Свои даты"]];
+
+function aiTrades() {
+  const [a, b] = AI.periodRange(AIV.kind, AIV.from, AIV.to);
+  return trades(S.mode).filter((t) => { const o = parseDT(t.v[COL.open]); return !Number.isNaN(o) && o >= a && o < b; });
+}
+function aiPeriodLabel(list) {
+  const ds = list.map((t) => parseDT(t.v[COL.open])).filter((x) => !Number.isNaN(x));
+  if (!ds.length) return "—";
+  return `${fmtDT(Math.min(...ds)).slice(0, 10)} – ${fmtDT(Math.max(...ds)).slice(0, 10)}`;
+}
+
+function aiSection(title, list, one, cls = "") {
+  if (!list || !list.length) return "";
+  return `<div class="nw-group ai-sec ${cls}"><div class="nw-ghead"><span>${title}</span><b class="clx-count">${list.length}</b></div>${list.map(one).join("")}</div>`;
+}
+const aiChips = (arr) => AI.tradeIds(arr).map((n) => `<button type="button" class="ai-trade" data-aitrade="${n}">#${n}</button>`).join("");
+
+function aiReportHtml(rep) {
+  const d = rep.data, sc = d.score;
+  const col = sc >= 75 ? "var(--win)" : sc >= 50 ? "var(--imp-med)" : "var(--lose)";
+  const sev = { high: tr("Серьёзно"), medium: tr("Средне"), low: tr("Мелочь") };
+  let n = 0;
+  return `<section class="panel nw-filters clx ai-rep">
+    <div class="ai-top">
+      <div class="ai-score" style="--p:${sc};--c:${col}"><b>${sc}</b><span>${tr("дисциплина")}</span></div>
+      <div class="ai-verdict"><div class="ai-meta">${esc(rep.period)} · ${tr("Сделок")}: ${rep.trades} · ${rep.mode === "bt" ? tr("Бэктест") : tr("Реальный счёт")}</div>
+        <p>${esc(d.verdict)}</p><div class="muted">${esc(d.score_reason)}</div></div>
+      <div class="clx-actions ai-exp"><button type="button" class="btn ghost sm" data-aiexp="png">PNG</button><button type="button" class="btn ghost sm" data-aiexp="pdf">PDF</button></div>
+    </div>
+    ${aiSection(tr("Ошибки"), d.mistakes, (m) => `<div class="ai-card sev-${esc(m.severity || "low")}">
+        <div class="ai-card-h"><span class="ai-sev">${sev[m.severity] || sev.low}</span><b>${esc(m.title)}</b>${aiChips(m.trades)}</div>
+        ${m.detail ? `<p>${esc(m.detail)}</p>` : ""}${m.fix ? `<p class="ai-fix">→ ${esc(m.fix)}</p>` : ""}</div>`)}
+    ${aiSection(tr("Нарушения правил стратегии"), d.rule_violations, (r) => `<div class="ai-card sev-high">
+        <div class="ai-card-h"><b>${esc(r.rule)}</b>${aiChips(r.trades)}</div>${r.detail ? `<p>${esc(r.detail)}</p>` : ""}</div>`)}
+    ${aiSection(tr("Закономерности"), d.patterns, (p) => `<div class="ai-card"><div class="ai-card-h"><b>${esc(p.title)}</b></div>${p.detail ? `<p>${esc(p.detail)}</p>` : ""}</div>`)}
+    ${aiSection(tr("Что получается"), d.strengths, (s) => `<div class="ai-li good">✓ ${esc(s)}</div>`)}
+    ${aiSection(tr("План на следующий период"), d.actions, (s) => `<div class="ai-li"><span class="ai-num">${++n}</span>${esc(s)}</div>`)}
+    ${aiSection(tr("Чего не хватает в журнале"), d.data_gaps, (s) => `<div class="ai-li muted">• ${esc(s)}</div>`, "nw-setbox")}
+    <div class="ai-foot muted">${tr("Разбор сделан ИИ ({m}) по данным журнала. Это не инвестиционная рекомендация.", { m: esc(rep.model) })}</div>
+  </section>`;
+}
+
+function renderAI() {
+  const s = AI.settings();
+  if (!s.enabled || !s.key) {
+    $("#view").innerHTML = `<div class="lt-page"><section class="panel st-empty">
+      <div class="ai-logo">✦</div><h2>${tr("AI-разбор журнала")}</h2>
+      <p class="muted">${tr("ИИ разберёт сделки за выбранный период, найдёт ошибки и нарушения твоих правил и даст план. Включается в разделе API: нужен свой ключ Anthropic.")}</p>
+      <button type="button" class="btn primary" data-act="ai-settings">${tr("Открыть настройки AI")}</button></section></div>`;
+    return;
+  }
+  const list = aiTrades();
+  const reps = AI.reports().filter((r) => r.mode === S.mode);
+  const pills = AI_PERIODS.map(([v, l]) => `<button type="button" data-aiper="${v}" class="${AIV.kind === v ? "on" : ""}">${tr(l)}</button>`).join("");
+  const model = (AI.MODELS.find(([m]) => m === s.model) || AI.MODELS[0])[1].split(" — ")[0];
+  $("#view").innerHTML = `<div class="lt-page ai-page">
+    ${modeBar()}
+    <div class="nw-head"><h2>${tr("AI-разбор журнала")}</h2><span class="muted">${tr("ошибки, нарушения правил и план на следующий период")}</span></div>
+    <section class="panel nw-filters clx">
+      <div class="nw-group"><div class="nw-ghead"><span>${tr("Период")}</span></div>
+        <div class="nw-pills">${pills}</div>
+        ${AIV.kind === "custom" ? `<div class="lt-row2"><label class="lt-field"><span>${tr("С")}</span><input type="date" data-aidate="from" value="${esc(AIV.from)}"></label>
+          <label class="lt-field"><span>${tr("По")}</span><input type="date" data-aidate="to" value="${esc(AIV.to)}"></label></div>` : ""}
+      </div>
+      <div class="nw-group nw-setbox ai-run">
+        <div class="ai-run-info"><b>${tr("Сделок в периоде: {n}", { n: list.length })}</b><span class="muted">${list.length ? esc(aiPeriodLabel(list)) + " · " : ""}${esc(model)}${list.length && list.length < 30 ? " · " + tr("выборка меньше 30 — выводы предварительные") : ""}</span></div>
+        <button type="button" class="btn primary" data-act="ai-run" ${AIV.busy || !list.length ? "disabled" : ""}>${AIV.busy ? tr("Анализирую…") : "✦ " + tr("Сделать разбор")}</button>
+      </div>
+    </section>
+    ${AIV.busy ? `<section class="panel ai-wait"><div class="ai-spin"></div><div><b>${tr("ИИ разбирает журнал…")}</b><div class="muted">${tr("Обычно 20–60 секунд. Можно не закрывать вкладку.")}</div></div></section>` : ""}
+    ${AIV.current && AIV.current.mode === S.mode ? aiReportHtml(AIV.current) : ""}
+    ${reps.length ? `<section class="panel"><h3>${tr("Прошлые разборы")}</h3>${reps.map((r) => `<div class="ai-hist ${AIV.current?.id === r.id ? "on" : ""}">
+        <button type="button" class="ai-hist-open" data-aiopen="${r.id}"><b class="ai-hist-score" style="color:${r.data.score >= 75 ? "var(--win)" : r.data.score >= 50 ? "var(--imp-med)" : "var(--lose)"}">${r.data.score}</b>
+          <span>${esc(r.period)}<small class="muted">${new Date(r.at).toLocaleString()} · ${tr("Сделок")}: ${r.trades}</small></span></button>
+        <button type="button" class="chip-x" data-aidel="${r.id}" aria-label="${tr("Удалить")}">×</button></div>`).join("")}</section>` : ""}
+  </div>`;
+}
+
+async function aiRun() {
+  const s = AI.settings();
+  const list = aiTrades();
+  if (!list.length) { toast(tr("В этом периоде нет сделок"), true); return; }
+  const [a, b] = AI.periodRange(AIV.kind, AIV.from, AIV.to);
+  const input = AI.buildInput({
+    trades: list, numbers: tradeNumbers(S.mode), stats: compute(list, S.lists), period: period(list), strategy: S.strategy || "",
+    runs: (S.runs || []).filter((r) => r.at >= a && r.at < b), itemText: CL.itemText, mode: S.mode, lang: LANG,
+    from: aiPeriodLabel(list).split(" – ")[0], to: aiPeriodLabel(list).split(" – ")[1],
+  });
+  AIV.busy = true; renderAI();
+  try {
+    const data = await AI.analyze(input, s);
+    const rep = { id: Date.now().toString(36), at: Date.now(), period: aiPeriodLabel(list), trades: list.length, mode: S.mode, model: s.model, data };
+    AI.addReport(rep);
+    AIV.current = rep;
+  } catch (e) {
+    toast(e.message || String(e), true);
+  } finally {
+    AIV.busy = false;
+    if (S.view === "ai") renderAI();
+  }
+}
+
+function aiClick(b) {
+  const d = b.dataset;
+  if (d.act === "ai-settings") { setView("connect"); return true; }
+  if (d.aiper) { AIV.kind = d.aiper; renderAI(); return true; }
+  if (d.act === "ai-run") { aiRun(); return true; }
+  if (d.aiopen) { AIV.current = AI.reports().find((r) => r.id === d.aiopen) || null; renderAI(); window.scrollTo(0, 0); return true; }
+  if (d.aidel) { if (confirm(tr("Удалить этот разбор?"))) { AI.removeReport(d.aidel); if (AIV.current?.id === d.aidel) AIV.current = null; renderAI(); } return true; }
+  if (d.aiexp && AIV.current) { exportAi(AIV.current, d.aiexp).catch((e) => toast(e.message, true)); return true; }
+  if (d.aitrade) {
+    const rep = AIV.current, n = +d.aitrade;
+    const row = [...tradeNumbers(rep?.mode || S.mode).entries()].find(([, num]) => num === n)?.[0];
+    if (row == null) { toast(tr("Сделка #{n} не найдена — журнал мог измениться", { n }), true); return true; }
+    if (rep && rep.mode !== S.mode) setMode(rep.mode);
+    openEditor(row);
+    return true;
+  }
+  return false;
+}
+
+// Раздел в экране API: включить / выключить, ключ, модель.
+function aiSettingsHtml() {
+  const s = AI.settings();
+  return `<section class="panel nw-filters clx ai-set">
+    <div class="nw-fhead"><h3>✦ ${tr("AI-разбор журнала")}</h3><span class="grow"></span>
+      <label class="ai-switch"><input type="checkbox" data-aion="1" ${s.enabled ? "checked" : ""}><span></span>${s.enabled ? tr("Включено") : tr("Выключено")}</label></div>
+    <div class="nw-group">
+      <div class="hint" style="margin:0">${tr("ИИ (Claude) разбирает сделки за период: ошибки с номерами сделок, нарушения правил из твоей стратегии, закономерности и план. Нужен свой ключ: console.anthropic.com → API Keys. Разборы оплачиваются с твоего аккаунта Anthropic (обычно центы за разбор). Ключ хранится только на этом устройстве и уходит только в Anthropic.")}</div>
+      ${s.enabled ? `<div class="lt-row2">
+        <label class="lt-field"><span>${tr("Ключ Anthropic API")}</span><input type="password" autocomplete="new-password" data-aif="key" value="${esc(s.key)}" placeholder="sk-ant-…" spellcheck="false"></label>
+        <label class="lt-field"><span>${tr("Модель")}</span><select data-aif="model">${AI.MODELS.map(([m, l]) => `<option value="${m}" ${s.model === m ? "selected" : ""}>${esc(tr(l))}</option>`).join("")}</select></label></div>
+        ${s.key ? `<button type="button" class="btn primary sm" data-act="ai-open" style="align-self:flex-start">✦ ${tr("Открыть AI-разбор")}</button>` : ""}` : ""}
+    </div>
+  </section>`;
+}
+
+// Кнопка AI в шапке — только когда разбор включён.
+function aiBtnSync() {
+  const b = $("#aiBtn");
+  if (!b) return;
+  b.hidden = !AI.enabled();
+  document.body.classList.toggle("ai-on", AI.enabled());
+  b.classList.toggle("on", S.view === "ai");
 }
 
 function renderStrategyEditor() {
@@ -2215,6 +2368,7 @@ function events() {
   $("#fab").onclick = () => openEditor(null);
   $("#newsBar").onclick = () => setView("news");
   $("#apiBtn").onclick = () => setView("connect");
+  $("#aiBtn").onclick = () => setView("ai");
   $("#refresh").onclick = () => reload().then((ok) => ok && toast(tr("Обновлено")));
   $("#logout").onclick = () => { if (confirm(tr("Выйти из Google-аккаунта в приложении?"))) { auth.logout(); showLogin(); } };
   $("#view").addEventListener("click", (e) => {
@@ -2224,6 +2378,8 @@ function events() {
     if (btn && S.view === "connect" && connectClick(btn)) return;
     if (btn && S.view === "news" && newsClick(btn)) return;
     if (btn && S.view === "lot" && lotClick(btn)) return;
+    if (btn && S.view === "ai" && aiClick(btn)) return;
+    if (btn?.dataset.act === "ai-open") { setView("ai"); return; }
     if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
     const toc = e.target.closest("[data-sttoc]");
     if (toc) { e.preventDefault(); document.getElementById(toc.dataset.sttoc)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
@@ -2241,6 +2397,7 @@ function events() {
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
     if (e.target.dataset.cxf) { CX.form[e.target.dataset.cxf] = e.target.value; return; }
     if (S.view === "lot" && lotInput(e.target)) return;
+    if (e.target.dataset.aif === "key") { AI.saveSettings({ ...AI.settings(), key: e.target.value.trim() }); return; }
     if (e.target.dataset.nwq != null) {
       const pos = e.target.selectionStart;
       newsSet({ q: e.target.value });
@@ -2255,6 +2412,9 @@ function events() {
   $("#view").addEventListener("mouseleave", () => { const t = $("#chartTip"); if (t) t.hidden = true; });
   $("#view").addEventListener("change", (e) => {
     if (S.view === "lot" && lotChange(e.target)) return;
+    if (e.target.dataset.aion) { AI.saveSettings({ ...AI.settings(), enabled: e.target.checked }); aiBtnSync(); renderConnect(); return; }
+    if (e.target.dataset.aif) { AI.saveSettings({ ...AI.settings(), [e.target.dataset.aif]: e.target.value.trim() }); aiBtnSync(); renderConnect(); return; }
+    if (e.target.dataset.aidate) { AIV[e.target.dataset.aidate] = e.target.value; renderAI(); return; }
     if (e.target.dataset.nwwin) { newsSet({ window: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) }); return; }
     if (e.target.dataset.nwnotify) {
       if (!e.target.checked) { newsSet({ notify: false }); return; }
