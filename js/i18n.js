@@ -501,4 +501,7 @@ export const EN = {
   "Расстояние, {u}": "Distance, {u}",
   "Лот у брокера": "Broker lot settings",
   "Сохраняю…": "Saving…",
+  "не обязательно": "optional",
+  "Осталось: {n}": "Left: {n}",
+  "Все пункты отмечены": "All items checked",
 };

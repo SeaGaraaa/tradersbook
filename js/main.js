@@ -1610,40 +1610,72 @@ function renderChecklist() {
   const c = S.run;
   const d = CL.current();
   const v = runVerdict(c);
+  const setup = CL.setupById(c.setup);
   const item = ([id, text]) => {
     const a = c.yes.includes(id) ? "yes" : c.no.includes(id) ? "no" : "";
-    return `<div class="cl-item ${a}"><div class="cl-text">${esc(text)}</div>
-      <div class="cl-btns"><button type="button" class="cl-yes ${a === "yes" ? "on" : ""}" data-rcl="${esc(id)}" data-v="yes" aria-label="${tr("Да")}">✓</button>
-      <button type="button" class="cl-no ${a === "no" ? "on" : ""}" data-rcl="${esc(id)}" data-v="no" aria-label="${tr("Нет")}">✗</button></div></div>`;
+    return `<div class="clx-item ${a}">
+      <span class="clx-dot" aria-hidden="true">${a === "yes" ? "✓" : a === "no" ? "✗" : ""}</span>
+      <div class="clx-text">${esc(text)}</div>
+      <div class="clx-tog" role="group">
+        <button type="button" class="clx-yes ${a === "yes" ? "on" : ""}" data-rcl="${esc(id)}" data-v="yes" aria-pressed="${a === "yes"}">✓ <span>${tr("Да")}</span></button>
+        <button type="button" class="clx-no ${a === "no" ? "on" : ""}" data-rcl="${esc(id)}" data-v="no" aria-pressed="${a === "no"}">✗ <span>${tr("Нет")}</span></button>
+      </div></div>`;
   };
-  const setup = CL.setupById(c.setup);
+  const block = (title, items, sub = "", extra = "") => {
+    const ids = items.map(([id]) => id);
+    const done = ids.filter((id) => c.yes.includes(id) || c.no.includes(id)).length;
+    const bad = ids.filter((id) => c.no.includes(id)).length;
+    return `<div class="nw-group clx-block">
+      <div class="nw-ghead"><span>${esc(title)}${sub ? ` <em>${esc(sub)}</em>` : ""}</span>
+        <b class="clx-count ${bad ? "bad" : done === ids.length && ids.length ? "ok" : ""}">${done}/${ids.length}</b></div>
+      <div class="clx-items">${items.map(item).join("")}</div>${extra}</div>`;
+  };
+  const req = CL.required(c);
+  const yesN = req.filter((id) => c.yes.includes(id)).length, noN = req.filter((id) => c.no.includes(id)).length;
+  const pct = (n) => (req.length ? (n / req.length) * 100 : 0);
   $("#view").innerHTML = `<div class="cl-page">
-    <section class="panel checklist ${v.st}">
-      <div class="clr-head"><h3><img src="icons/tb-checklist.png" alt="" class="cl-logo">${tr("Новый чек-лист")}</h3>${v.html}</div>
-      <div class="hint cl-rule">${tr("Сделки нет при {n} «нет» и больше", { n: CL.limit() })} · <button type="button" class="link-btn" data-act="cl-edit">${tr("изменить")}</button></div>
-      ${d.note ? `<div class="hint cl-note">${esc(d.note)}</div>` : ""}
-      <div class="cl-h">${tr("Актив")}</div>
-      <div class="chips">${S.lists.pair.map((p) => `<button type="button" class="chip ${c.pair === p ? "on" : ""}" data-rpair="${esc(p)}">${esc(p)}</button>`).join("")}
-        <button type="button" class="chip add" data-act="pair-add" title="${tr("Пара добавится везде: журнал, бэктест, чек-лист")}">${tr("+ пара")}</button></div>
-      <div class="cl-h">${tr("Сетап")} <span class="muted">${tr("— не обязательно; выбранный добавит свои пункты")}</span></div>
-      <div class="chips">${d.setups.map((s) => `<button type="button" class="chip ${c.setup === s.id ? "on" : ""}" data-rsetup="${esc(s.id)}">${esc(s.name)}</button>`).join("")}
-        <button type="button" class="chip add" data-act="setup-add">${tr("+ сетап")}</button>
-        ${d.setups.length ? `<button type="button" class="link-btn" data-act="setup-edit">${tr("изменить сетапы")}</button>` : ""}</div>
-      ${d.general.map((g) => `<div class="cl-h">${esc(g.title)}</div>${g.items.map(item).join("")}`).join("")}
-      ${setup ? `<div class="cl-h">${esc(setup.name)}${setup.entry ? ` <span class="muted">— ${esc(setup.entry)}</span>` : ""}</div>
-        ${setup.items.map(item).join("")}${setup.no ? `<div class="hint cl-no-trade">${esc(setup.no)}</div>` : ""}` : ""}
-      <label class="cl-note-in">${tr("Заметка")}<textarea rows="2" data-rnote="1" placeholder="${tr("Что видишь на графике, почему да / нет")}">${esc(c.note)}</textarea></label>
-      <div class="cle-actions">
-        <button type="button" class="btn primary" data-act="run-save">${tr("Сохранить чек-лист")}</button>
-        <button type="button" class="btn ghost" data-act="run-reset">${tr("Очистить")}</button>
-        <span class="grow"></span>
-        <button type="button" class="link-btn" data-act="cl-edit">${tr("Изменить чек-лист")}</button>
+    <section class="panel nw-filters clx ${v.st}">
+      <div class="clx-head">
+        <img src="icons/tb-checklist.png" alt="" class="cl-logo">
+        <div class="clx-title"><h3>${tr("Новый чек-лист")}</h3>
+          <div class="muted">${tr("Сделки нет при {n} «нет» и больше", { n: CL.limit() })} · <button type="button" class="link-btn" data-act="cl-edit">${tr("изменить")}</button></div></div>
+        <div class="clx-verdict">${v.html}</div>
       </div>
-      <div class="cl-export">
-        <span class="muted">${tr("Выгрузить чек-лист")} <span class="cl-export-hint">${tr("(пустой — бланк для печати)")}</span></span>
-        <span class="grow"></span>
-        <button type="button" class="btn ghost sm" data-act="run-png" title="${tr("Выгрузить картинкой (пустой — бланк для печати)")}">PNG</button>
-        <button type="button" class="btn ghost sm" data-act="run-pdf" title="${tr("Выгрузить в PDF (пустой — бланк для печати)")}">PDF</button>
+      <div class="clx-progress">
+        <div class="clx-bar"><i class="y" style="width:${pct(yesN)}%"></i><i class="n" style="width:${pct(noN)}%"></i></div>
+        <div class="clx-legend"><span>${req.length - yesN - noN ? tr("Осталось: {n}", { n: req.length - yesN - noN }) : tr("Все пункты отмечены")}</span>
+          <span><b class="pos">✓ ${yesN}</b> · <b class="neg">✗ ${noN}</b></span></div>
+      </div>
+      ${d.note ? `<div class="clx-note">${esc(d.note)}</div>` : ""}
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Актив")}</span></div>
+        <div class="chips">${S.lists.pair.map((p) => `<button type="button" class="chip ${c.pair === p ? "on" : ""}" data-rpair="${esc(p)}">${esc(p)}</button>`).join("")}
+          <button type="button" class="chip add" data-act="pair-add" title="${tr("Пара добавится везде: журнал, бэктест, чек-лист")}">${tr("+ пара")}</button></div>
+      </div>
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Сетап")} <em>${tr("не обязательно")}</em></span>
+          ${d.setups.length ? `<button type="button" class="link-btn" data-act="setup-edit">${tr("изменить сетапы")}</button>` : ""}</div>
+        <div class="chips">${d.setups.map((s) => `<button type="button" class="chip ${c.setup === s.id ? "on" : ""}" data-rsetup="${esc(s.id)}">${esc(s.name)}</button>`).join("")}
+          <button type="button" class="chip add" data-act="setup-add">${tr("+ сетап")}</button></div>
+      </div>
+      ${d.general.map((g) => block(g.title, g.items)).join("")}
+      ${setup ? block(setup.name, setup.items, setup.entry || "", setup.no ? `<div class="clx-warn">${esc(setup.no)}</div>` : "") : ""}
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Заметка")}</span></div>
+        <textarea rows="2" data-rnote="1" placeholder="${tr("Что видишь на графике, почему да / нет")}">${esc(c.note)}</textarea>
+        <div class="clx-actions">
+          <button type="button" class="btn primary" data-act="run-save">${tr("Сохранить чек-лист")}</button>
+          <button type="button" class="btn ghost" data-act="run-reset">${tr("Очистить")}</button>
+          <span class="grow"></span>
+          <button type="button" class="link-btn" data-act="cl-edit">${tr("Изменить чек-лист")}</button>
+        </div>
+      </div>
+      <div class="nw-group nw-setbox clx-export">
+        <div class="nw-ghead"><span>${tr("Выгрузить чек-лист")} <em>${tr("(пустой — бланк для печати)")}</em></span></div>
+        <div class="clx-actions">
+          <button type="button" class="btn ghost sm" data-act="run-png" title="${tr("Выгрузить картинкой (пустой — бланк для печати)")}">PNG</button>
+          <button type="button" class="btn ghost sm" data-act="run-pdf" title="${tr("Выгрузить в PDF (пустой — бланк для печати)")}">PDF</button>
+        </div>
       </div>
     </section>
     ${runsHistory()}

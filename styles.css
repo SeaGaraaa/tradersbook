@@ -832,3 +832,59 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .ana-grid { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
 .ana-grid > .panel { min-width: 0; overflow-x: auto; }
 .ana-grid { grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); }
+
+/* ---------- чек-лист: панель по блокам, прогресс, переключатели Да/Нет ---------- */
+.clx { display: flex !important; flex-direction: column; border-width: 1px; }
+.clx .nw-group { border-left: 0 !important; }
+.clx.ok { border-color: color-mix(in srgb, var(--win) 50%, var(--line)); }
+.clx.broken { border-color: color-mix(in srgb, var(--lose) 50%, var(--line)); }
+.clx.warn { border-color: color-mix(in srgb, var(--imp-med) 50%, var(--line)); }
+.clx-head { display: flex; align-items: center; gap: 12px; padding: 16px 16px 10px; flex-wrap: wrap; }
+.clx-head .cl-logo { width: 40px; height: 40px; border-radius: 10px; }
+.clx-title { flex: 1; min-width: 180px; }
+.clx-title h3 { margin: 0 0 2px; font-size: 17px; }
+.clx-title .muted { font-size: 12px; }
+.clx-verdict .chk-v { display: inline-block; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 10px; background: var(--panel2); color: var(--muted); }
+.clx-verdict .chk-v.ok { background: var(--win-bg); color: var(--win); }
+.clx-verdict .chk-v.bad { background: var(--lose-bg); color: var(--lose); }
+.clx-verdict .chk-v.warn { background: color-mix(in srgb, var(--imp-med) 14%, transparent); color: var(--imp-med); }
+.clx-progress { padding: 0 16px 14px; }
+.clx-bar { display: flex; height: 8px; border-radius: 8px; background: var(--panel2); overflow: hidden; gap: 2px; }
+.clx-bar i { display: block; height: 100%; transition: width .2s; }
+.clx-bar i.y { background: var(--win); border-radius: 8px 0 0 8px; }
+.clx-bar i.n { background: var(--lose); }
+.clx-legend { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.clx-legend b.pos { color: var(--win); } .clx-legend b.neg { color: var(--lose); }
+.clx-note { margin: 0 16px 14px; padding: 9px 12px; border-radius: 10px; background: var(--panel2); font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.nw-ghead em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 500; opacity: .8; margin-left: 4px; }
+.clx-count { font-size: 12px; font-weight: 700; color: var(--muted); padding: 2px 8px; border-radius: 8px; background: var(--panel2); font-variant-numeric: tabular-nums; }
+.clx-count.ok { color: var(--win); background: var(--win-bg); }
+.clx-count.bad { color: var(--lose); background: var(--lose-bg); }
+.clx-items { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.clx-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; transition: background .15s; }
+.clx-item + .clx-item { border-top: 1px solid var(--line); }
+.clx-item.yes { background: color-mix(in srgb, var(--win) 7%, transparent); }
+.clx-item.no { background: color-mix(in srgb, var(--lose) 8%, transparent); }
+.clx-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; }
+.clx-item.yes .clx-dot { background: var(--win); border-color: var(--win); }
+.clx-item.no .clx-dot { background: var(--lose); border-color: var(--lose); }
+.clx-text { flex: 1; min-width: 0; font-size: 14px; line-height: 1.45; }
+.clx-item.yes .clx-text { color: var(--muted); }
+.clx-item.no .clx-text { color: var(--lose); }
+.clx-tog { flex: none; display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 3px; }
+.clx-tog button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; padding: 6px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.clx-tog button:hover { color: var(--text); background: var(--panel2); }
+.clx-tog .clx-yes.on { background: var(--win); color: #fff; }
+.clx-tog .clx-no.on { background: var(--lose); color: #fff; }
+.clx-warn { font-size: 12.5px; color: var(--lose); background: var(--lose-bg); border-radius: 10px; padding: 8px 12px; }
+.clx textarea { width: 100%; font-size: 15px; }
+.clx-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.clx-export { flex-direction: row !important; align-items: center !important; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 640px) {
+  .clx-tog button span { display: none; }
+  .clx-tog button { padding: 7px 11px; font-size: 15px; }
+  .clx-item { padding: 10px; gap: 10px; }
+  .clx-dot { display: none; }
+  .clx-verdict { width: 100%; }
+  .clx-verdict .chk-v { display: block; text-align: center; }
+}
