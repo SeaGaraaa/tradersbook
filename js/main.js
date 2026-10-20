@@ -382,11 +382,18 @@ function niceStep(x) {
   return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * e;
 }
 
+// Winrate: число и тонкая полоса под ним; от 50% — зелёная, ниже — жёлтая; без сделок — «—».
+function wrCell(r) {
+  if (!r.trades) return `<span class="wr wr-none">—</span>`;
+  const p = Math.round(r.winrate * 100);
+  return `<span class="wr ${p >= 50 ? "wr-good" : p > 0 ? "wr-mid" : "wr-zero"}"><b>${fmtPct(r.winrate)}</b><i><s style="width:${p}%"></s></i></span>`;
+}
+
 function anaTable(title, rows, extra = []) {
   return `<section class="panel"><h3>${title}</h3><table class="ana">
     <thead><tr><th></th><th class="r">Trades</th><th class="r">Win</th><th class="r">Winrate</th>${extra.map((x) => `<th class="r">${x.h}</th>`).join("")}</tr></thead>
     <tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="r">${r.trades}</td><td class="r">${r.win}</td>
-      <td class="r"><span class="bar" style="--w:${Math.round(r.winrate * 100)}%"></span>${fmtPct(r.winrate)}</td>
+      <td class="r wr-td">${wrCell(r)}</td>
       ${extra.map((x) => `<td class="r">${x.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table></section>`;
 }
 
@@ -690,6 +697,7 @@ function renderEditor() {
         <label>Notes<textarea data-k="notes" rows="4">${esc(f.notes)}</textarea></label>
         ${isNew ? "" : `<button class="btn danger wide" data-act="delete">${tr("Удалить сделку")}</button>`}
       </div>
+      <div class="ed-foot"><button class="btn primary" data-act="save">${tr("Сохранить")}</button></div>
     </div>`;
   $("#editor .ed-body").scrollTop = scroll;
   hydrateThumbs($("#editor"));
@@ -1968,6 +1976,7 @@ async function uploadTo(tf, file) {
 const findByKey = (list, key) => list.find((x) => String(x.v[3]) === String(key.pair) && sameMinute(parseDT(x.v[0]), parseDT(key.open)));
 
 async function saveEditor() {
+  if (S.saving) return; // уже сохраняем — второе нажатие ничего не делает
   const ed = S.ed;
   const bk = api.BOOKS[ed.mode];
   if (Object.values(ed.uploading).some((x) => x > 0)) { toast(tr("Подожди, скриншот ещё загружается")); return; }
@@ -1982,6 +1991,9 @@ async function saveEditor() {
   }
   saveDraft();
   setBusy(true);
+  S.saving = true;
+  document.activeElement?.blur?.();
+  $$('#editor [data-act="save"]').forEach((b) => { b.disabled = true; b.classList.add("saving"); b.textContent = tr("Сохраняю…"); });
   try {
     if (!ed.n) {
       const sheetId = ed.mode === "bt" ? (S.books.bt?.sheetId ?? await api.ensureBacktest()) : book("live").sheetId;
@@ -2014,6 +2026,8 @@ async function saveEditor() {
   } catch (e) {
     handleErr(e);
   } finally {
+    S.saving = false;
+    $$('#editor [data-act="save"]').forEach((b) => { b.disabled = false; b.classList.remove("saving"); b.textContent = tr("Сохранить"); });
     setBusy(false);
   }
 }

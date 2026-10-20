@@ -500,4 +500,5 @@ export const EN = {
   "Цена стопа": "Stop price",
   "Расстояние, {u}": "Distance, {u}",
   "Лот у брокера": "Broker lot settings",
+  "Сохраняю…": "Saving…",
 };
