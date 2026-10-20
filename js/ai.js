@@ -101,7 +101,7 @@ Sort mistakes by severity (high first). Keep each text field under 400 character
 
 // Активный ключ и модель выбранного сервиса.
 export const activeKey = (s = settings()) => (s.provider === "gemini" ? s.gkey : s.key);
-export const activeModel = (s = settings()) => (s.provider === "gemini" ? s.gmodel || "gemini-2.5-flash" : s.model);
+export const activeModel = (s = settings()) => (s.provider === "gemini" ? s.gmodel || "gemini-flash-latest" : s.model);
 
 // Модели Gemini, доступные по ключу (берём у Google, чтобы список был актуальным). Самая свежая Flash — первой.
 export async function geminiModels(key) {
@@ -109,11 +109,14 @@ export async function geminiModels(key) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(r.status === 400 || r.status === 403 ? "Ключ Gemini не подошёл — проверь его" : "Gemini: " + (j?.error?.message || r.status));
   const list = (j.models || [])
-    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /^models\/gemini-[\d.]+-(flash|pro)/.test(m.name) && !/(tts|image|audio|live|embedding|thinking-exp)/.test(m.name))
-    .map((m) => m.name.replace("models/", ""));
+    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /^models\/gemini-([\d.]+-)?(flash|pro)/.test(m.name) && !/(tts|image|audio|live|embedding|thinking-exp|transcribe|customtools|computer-use|robotics)/.test(m.name))
+    .map((m) => m.name.replace("models/", ""))
+    .filter((n) => !/^gemini-(1\.|2\.)/.test(n)); // 1.x и 2.x для новых ключей Google уже закрыл
   const ver = (n) => parseFloat((n.match(/gemini-([\d.]+)/) || [])[1] || 0);
   const rank = (n) => ver(n) * 10 + (/flash$/.test(n) ? 3 : /pro$/.test(n) ? 2 : /flash/.test(n) ? 1 : 0) - (/preview|exp/.test(n) ? 5 : 0);
-  return [...new Set(list)].sort((a, b) => rank(b) - rank(a));
+  // «-latest» Google сам ведёт на свежую версию — его ставим первым
+  const alias = (n) => (n === "gemini-flash-latest" ? 1000 : /-latest$/.test(n) ? 500 : 0);
+  return [...new Set(list)].sort((a, b) => alias(b) - alias(a) || rank(b) - rank(a));
 }
 
 async function callClaude(prompt, key, model) {
@@ -139,19 +142,23 @@ async function callClaude(prompt, key, model) {
 
 async function callGemini(prompt, key, model) {
   let res;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 6 * 60e3); // бесплатный Gemini бывает медленным
   try {
     res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
+      method: "POST", signal: ctl.signal,
       headers: { "x-goog-api-key": key, "content-type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 8192 },
+        generationConfig: { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 16384 },
       }),
     });
-  } catch {
-    throw new Error("Нет связи с Gemini — проверь интернет");
+  } catch (e) {
+    clearTimeout(timer);
+    throw new Error(e?.name === "AbortError" ? "Gemini не ответил за 6 минут — попробуй ещё раз или возьми период короче" : "Нет связи с Gemini — проверь интернет");
   }
+  clearTimeout(timer);
   const j = await res.json().catch(() => ({}));
   if (!res.ok) {
     const m = j?.error?.message || res.statusText;
@@ -162,7 +169,7 @@ async function callGemini(prompt, key, model) {
   }
   const parts = j.candidates?.[0]?.content?.parts || [];
   if (!parts.length) throw new Error("Gemini не дал ответа (" + (j.candidates?.[0]?.finishReason || j.promptFeedback?.blockReason || "пусто") + ") — попробуй ещё раз");
-  return { text: parts.map((p) => p.text || "").join(""), usage: j.usageMetadata || null };
+  return { text: parts.filter((p) => !p.thought).map((p) => p.text || "").join(""), usage: j.usageMetadata || null };
 }
 
 export async function analyze(input, s = settings()) {

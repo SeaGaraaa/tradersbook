@@ -1515,7 +1515,7 @@ function renderAI() {
         <button type="button" class="btn primary" data-act="ai-run" ${AIV.busy || !list.length ? "disabled" : ""}>${AIV.busy ? tr("Анализирую…") : "✦ " + tr("Сделать разбор")}</button>
       </div>
     </section>
-    ${AIV.busy ? `<section class="panel ai-wait"><div class="ai-spin"></div><div><b>${tr("ИИ разбирает журнал…")}</b><div class="muted">${tr("Обычно 20–60 секунд. Можно не закрывать вкладку.")}</div></div></section>` : ""}
+    ${AIV.busy ? `<section class="panel ai-wait"><div class="ai-spin"></div><div><b>${tr("ИИ разбирает журнал…")}</b><div class="muted">${AI.settings().provider === "gemini" ? tr("Бесплатный Gemini отвечает медленно: обычно 1–5 минут. Не закрывай приложение и не сворачивай его на телефоне.") : tr("Обычно 20–60 секунд. Можно не закрывать вкладку.")}</div></div></section>` : ""}
     ${AIV.current && AIV.current.mode === S.mode ? aiReportHtml(AIV.current) : ""}
     ${reps.length ? `<section class="panel"><h3>${tr("Прошлые разборы")}</h3>${reps.map((r) => `<div class="ai-hist ${AIV.current?.id === r.id ? "on" : ""}">
         <button type="button" class="ai-hist-open" data-aiopen="${r.id}"><b class="ai-hist-score" style="color:${r.data.score >= 75 ? "var(--win)" : r.data.score >= 50 ? "var(--imp-med)" : "var(--lose)"}">${r.data.score}</b>

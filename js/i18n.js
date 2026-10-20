@@ -570,4 +570,5 @@ export const EN = {
   "Ключ Gemini API": "Gemini API key",
   "Ключ: console.anthropic.com → API Keys. Разборы оплачиваются с твоего аккаунта Anthropic (обычно центы за разбор).": "Key: console.anthropic.com → API Keys. Reviews are billed to your Anthropic account (usually cents per review).",
   "Нет связи с Gemini — проверь интернет": "No connection to Gemini — check your internet",
+  "Бесплатный Gemini отвечает медленно: обычно 1–5 минут. Не закрывай приложение и не сворачивай его на телефоне.": "Free Gemini is slow: usually 1–5 minutes. Keep the app open and in the foreground on your phone.",
 };
