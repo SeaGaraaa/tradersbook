@@ -563,4 +563,11 @@ export const EN = {
   "Claude Sonnet 5.5 — рекомендую (быстро и точно)": "Claude Sonnet 5.5 — recommended (fast and accurate)",
   "Claude Opus 5.5 — глубже, дороже": "Claude Opus 5.5 — deeper, pricier",
   "Claude Haiku 5.5 — дешевле, проще": "Claude Haiku 5.5 — cheaper, simpler",
+  "ИИ разбирает сделки за период: ошибки с номерами сделок, нарушения правил из твоей стратегии, закономерности и план. Ключ хранится только на этом устройстве и уходит только в выбранный сервис.": "AI reviews trades for a period: mistakes with trade numbers, violations of your strategy rules, patterns and a plan. The key is stored only on this device and sent only to the chosen service.",
+  "бесплатно": "free",
+  "платно": "paid",
+  "Ключ бесплатно: aistudio.google.com → Get API key (карта не нужна). Есть лимит запросов в минуту и в день — для разборов раз в неделю хватает. На бесплатном тарифе Google может использовать данные запросов для улучшения своих моделей.": "Free key: aistudio.google.com → Get API key (no card needed). There are per-minute and daily request limits — enough for weekly reviews. On the free tier Google may use request data to improve its models.",
+  "Ключ Gemini API": "Gemini API key",
+  "Ключ: console.anthropic.com → API Keys. Разборы оплачиваются с твоего аккаунта Anthropic (обычно центы за разбор).": "Key: console.anthropic.com → API Keys. Reviews are billed to your Anthropic account (usually cents per review).",
+  "Нет связи с Gemini — проверь интернет": "No connection to Gemini — check your internet",
 };

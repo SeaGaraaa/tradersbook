@@ -1490,7 +1490,7 @@ function aiReportHtml(rep) {
 
 function renderAI() {
   const s = AI.settings();
-  if (!s.enabled || !s.key) {
+  if (!s.enabled || !AI.activeKey(s)) {
     $("#view").innerHTML = `<div class="lt-page"><section class="panel st-empty">
       <div class="ai-logo">✦</div><h2>${tr("AI-разбор журнала")}</h2>
       <p class="muted">${tr("ИИ разберёт сделки за выбранный период, найдёт ошибки и нарушения твоих правил и даст план. Включается в разделе API: нужен свой ключ Anthropic.")}</p>
@@ -1500,7 +1500,7 @@ function renderAI() {
   const list = aiTrades();
   const reps = AI.reports().filter((r) => r.mode === S.mode);
   const pills = AI_PERIODS.map(([v, l]) => `<button type="button" data-aiper="${v}" class="${AIV.kind === v ? "on" : ""}">${tr(l)}</button>`).join("");
-  const model = (AI.MODELS.find(([m]) => m === s.model) || AI.MODELS[0])[1].split(" — ")[0];
+  const model = s.provider === "gemini" ? "Gemini · " + AI.activeModel(s) : (AI.MODELS.find(([m]) => m === s.model) || AI.MODELS[0])[1].split(" — ")[0];
   $("#view").innerHTML = `<div class="lt-page ai-page">
     ${modeBar()}
     <div class="nw-head"><h2>${tr("AI-разбор журнала")}</h2><span class="muted">${tr("ошибки, нарушения правил и план на следующий период")}</span></div>
@@ -1537,7 +1537,7 @@ async function aiRun() {
   AIV.busy = true; renderAI();
   try {
     const data = await AI.analyze(input, s);
-    const rep = { id: Date.now().toString(36), at: Date.now(), period: aiPeriodLabel(list), trades: list.length, mode: S.mode, model: s.model, data };
+    const rep = { id: Date.now().toString(36), at: Date.now(), period: aiPeriodLabel(list), trades: list.length, mode: S.mode, model: AI.activeModel(s), data };
     AI.addReport(rep);
     AIV.current = rep;
   } catch (e) {
@@ -1574,13 +1574,37 @@ function aiSettingsHtml() {
     <div class="nw-fhead"><h3>✦ ${tr("AI-разбор журнала")}</h3><span class="grow"></span>
       <label class="ai-switch"><input type="checkbox" data-aion="1" ${s.enabled ? "checked" : ""}><span></span>${s.enabled ? tr("Включено") : tr("Выключено")}</label></div>
     <div class="nw-group">
-      <div class="hint" style="margin:0">${tr("ИИ (Claude) разбирает сделки за период: ошибки с номерами сделок, нарушения правил из твоей стратегии, закономерности и план. Нужен свой ключ: console.anthropic.com → API Keys. Разборы оплачиваются с твоего аккаунта Anthropic (обычно центы за разбор). Ключ хранится только на этом устройстве и уходит только в Anthropic.")}</div>
-      ${s.enabled ? `<div class="lt-row2">
-        <label class="lt-field"><span>${tr("Ключ Anthropic API")}</span><input type="password" autocomplete="new-password" data-aif="key" value="${esc(s.key)}" placeholder="sk-ant-…" spellcheck="false"></label>
-        <label class="lt-field"><span>${tr("Модель")}</span><select data-aif="model">${AI.MODELS.map(([m, l]) => `<option value="${m}" ${s.model === m ? "selected" : ""}>${esc(tr(l))}</option>`).join("")}</select></label></div>
-        ${s.key ? `<button type="button" class="btn primary sm" data-act="ai-open" style="align-self:flex-start">✦ ${tr("Открыть AI-разбор")}</button>` : ""}` : ""}
+      <div class="hint" style="margin:0">${tr("ИИ разбирает сделки за период: ошибки с номерами сделок, нарушения правил из твоей стратегии, закономерности и план. Ключ хранится только на этом устройстве и уходит только в выбранный сервис.")}</div>
+      ${s.enabled ? `
+      <div class="nw-pills ai-prov"><button type="button" data-aiprov="gemini" class="${s.provider === "gemini" ? "on" : ""}">Google Gemini · ${tr("бесплатно")}</button>
+        <button type="button" data-aiprov="claude" class="${s.provider !== "gemini" ? "on" : ""}">Claude · ${tr("платно")}</button></div>
+      ${s.provider === "gemini" ? `
+        <div class="hint" style="margin:0">${tr("Ключ бесплатно: aistudio.google.com → Get API key (карта не нужна). Есть лимит запросов в минуту и в день — для разборов раз в неделю хватает. На бесплатном тарифе Google может использовать данные запросов для улучшения своих моделей.")}</div>
+        <div class="lt-row2">
+          <label class="lt-field"><span>${tr("Ключ Gemini API")}</span><input type="password" autocomplete="new-password" data-aif="gkey" value="${esc(s.gkey)}" placeholder="AIza…" spellcheck="false"></label>
+          <label class="lt-field"><span>${tr("Модель")}</span><select data-aif="gmodel">${(s.gmodels.length ? s.gmodels : [AI.activeModel(s)]).map((m) => `<option ${AI.activeModel(s) === m ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></label></div>`
+      : `
+        <div class="hint" style="margin:0">${tr("Ключ: console.anthropic.com → API Keys. Разборы оплачиваются с твоего аккаунта Anthropic (обычно центы за разбор).")}</div>
+        <div class="lt-row2">
+          <label class="lt-field"><span>${tr("Ключ Anthropic API")}</span><input type="password" autocomplete="new-password" data-aif="key" value="${esc(s.key)}" placeholder="sk-ant-…" spellcheck="false"></label>
+          <label class="lt-field"><span>${tr("Модель")}</span><select data-aif="model">${AI.MODELS.map(([m, l]) => `<option value="${m}" ${s.model === m ? "selected" : ""}>${esc(tr(l))}</option>`).join("")}</select></label></div>`}
+      ${AI.activeKey(s) ? `<button type="button" class="btn primary sm" data-act="ai-open" style="align-self:flex-start">✦ ${tr("Открыть AI-разбор")}</button>` : ""}` : ""}
     </div>
   </section>`;
+}
+
+// Ключ Gemini введён — подтянуть доступные модели и выбрать свежую Flash.
+async function aiLoadGeminiModels() {
+  const s = AI.settings();
+  if (!s.gkey) return;
+  try {
+    const list = await AI.geminiModels(s.gkey);
+    const cur = AI.settings();
+    AI.saveSettings({ ...cur, gmodels: list, gmodel: list.includes(cur.gmodel) ? cur.gmodel : list[0] || "" });
+    if (S.view === "connect") renderConnect();
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 // Кнопка AI в шапке — только когда разбор включён.
@@ -2380,6 +2404,7 @@ function events() {
     if (btn && S.view === "lot" && lotClick(btn)) return;
     if (btn && S.view === "ai" && aiClick(btn)) return;
     if (btn?.dataset.act === "ai-open") { setView("ai"); return; }
+    if (btn?.dataset.aiprov) { AI.saveSettings({ ...AI.settings(), provider: btn.dataset.aiprov }); renderConnect(); if (btn.dataset.aiprov === "gemini" && !AI.settings().gmodels.length) aiLoadGeminiModels(); return; }
     if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
     const toc = e.target.closest("[data-sttoc]");
     if (toc) { e.preventDefault(); document.getElementById(toc.dataset.sttoc)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
@@ -2397,7 +2422,7 @@ function events() {
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
     if (e.target.dataset.cxf) { CX.form[e.target.dataset.cxf] = e.target.value; return; }
     if (S.view === "lot" && lotInput(e.target)) return;
-    if (e.target.dataset.aif === "key") { AI.saveSettings({ ...AI.settings(), key: e.target.value.trim() }); return; }
+    if (e.target.dataset.aif === "key" || e.target.dataset.aif === "gkey") { AI.saveSettings({ ...AI.settings(), [e.target.dataset.aif]: e.target.value.trim() }); return; }
     if (e.target.dataset.nwq != null) {
       const pos = e.target.selectionStart;
       newsSet({ q: e.target.value });
@@ -2413,7 +2438,7 @@ function events() {
   $("#view").addEventListener("change", (e) => {
     if (S.view === "lot" && lotChange(e.target)) return;
     if (e.target.dataset.aion) { AI.saveSettings({ ...AI.settings(), enabled: e.target.checked }); aiBtnSync(); renderConnect(); return; }
-    if (e.target.dataset.aif) { AI.saveSettings({ ...AI.settings(), [e.target.dataset.aif]: e.target.value.trim() }); aiBtnSync(); renderConnect(); return; }
+    if (e.target.dataset.aif) { AI.saveSettings({ ...AI.settings(), [e.target.dataset.aif]: e.target.value.trim() }); aiBtnSync(); renderConnect(); if (e.target.dataset.aif === "gkey") aiLoadGeminiModels(); return; }
     if (e.target.dataset.aidate) { AIV[e.target.dataset.aidate] = e.target.value; renderAI(); return; }
     if (e.target.dataset.nwwin) { newsSet({ window: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) }); return; }
     if (e.target.dataset.nwnotify) {

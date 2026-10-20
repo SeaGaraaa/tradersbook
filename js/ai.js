@@ -8,7 +8,8 @@ export const MODELS = [
 ];
 const KEY = "tj.ai", REPORTS = "tj.ai.reports";
 
-export function settings() { try { return { enabled: false, key: "", model: MODELS[0][0], ...JSON.parse(lsGet(KEY) || "{}") }; } catch { return { enabled: false, key: "", model: MODELS[0][0] }; } }
+const DEF = { enabled: false, provider: "gemini", key: "", model: MODELS[0][0], gkey: "", gmodel: "", gmodels: [] };
+export function settings() { try { return { ...DEF, ...JSON.parse(lsGet(KEY) || "{}") }; } catch { return { ...DEF }; } }
 export function saveSettings(s) { lsSet(KEY, JSON.stringify(s)); }
 export const enabled = () => settings().enabled;
 
@@ -98,13 +99,30 @@ Return ONLY one JSON object, no markdown, with exactly these keys:
  "data_gaps": ["what is missing in the journal to analyse better"]}
 Sort mistakes by severity (high first). Keep each text field under 400 characters.`;
 
-export async function analyze(input, { key, model }) {
+// Активный ключ и модель выбранного сервиса.
+export const activeKey = (s = settings()) => (s.provider === "gemini" ? s.gkey : s.key);
+export const activeModel = (s = settings()) => (s.provider === "gemini" ? s.gmodel || "gemini-2.5-flash" : s.model);
+
+// Модели Gemini, доступные по ключу (берём у Google, чтобы список был актуальным). Самая свежая Flash — первой.
+export async function geminiModels(key) {
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 400 || r.status === 403 ? "Ключ Gemini не подошёл — проверь его" : "Gemini: " + (j?.error?.message || r.status));
+  const list = (j.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /^models\/gemini-[\d.]+-(flash|pro)/.test(m.name) && !/(tts|image|audio|live|embedding|thinking-exp)/.test(m.name))
+    .map((m) => m.name.replace("models/", ""));
+  const ver = (n) => parseFloat((n.match(/gemini-([\d.]+)/) || [])[1] || 0);
+  const rank = (n) => ver(n) * 10 + (/flash$/.test(n) ? 3 : /pro$/.test(n) ? 2 : /flash/.test(n) ? 1 : 0) - (/preview|exp/.test(n) ? 5 : 0);
+  return [...new Set(list)].sort((a, b) => rank(b) - rank(a));
+}
+
+async function callClaude(prompt, key, model) {
   let res;
   try {
     res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "content-type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 8000, system: SYSTEM, messages: [{ role: "user", content: "Trading journal data (JSON):\n" + JSON.stringify(input) }] }),
+      body: JSON.stringify({ model, max_tokens: 8000, system: SYSTEM, messages: [{ role: "user", content: prompt }] }),
     });
   } catch {
     throw new Error("Нет связи с Claude API — проверь интернет");
@@ -116,10 +134,44 @@ export async function analyze(input, { key, model }) {
     if (res.status === 429) throw new Error("Слишком много запросов или закончился лимит аккаунта Anthropic: " + m);
     throw new Error("Claude API: " + m);
   }
-  const text = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
-  const s = text.indexOf("{"), e = text.lastIndexOf("}");
+  return { text: (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join(""), usage: j.usage || null };
+}
+
+async function callGemini(prompt, key, model) {
+  let res;
+  try {
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": key, "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 8192 },
+      }),
+    });
+  } catch {
+    throw new Error("Нет связи с Gemini — проверь интернет");
+  }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const m = j?.error?.message || res.statusText;
+    if (res.status === 400 && /api key/i.test(m)) throw new Error("Ключ Gemini не подошёл — проверь его в разделе API");
+    if (res.status === 429) throw new Error("Бесплатный лимит Gemini на сейчас исчерпан — попробуй через минуту или завтра");
+    if (res.status === 404) throw new Error("Эта модель Gemini недоступна — выбери другую в разделе API");
+    throw new Error("Gemini: " + m);
+  }
+  const parts = j.candidates?.[0]?.content?.parts || [];
+  if (!parts.length) throw new Error("Gemini не дал ответа (" + (j.candidates?.[0]?.finishReason || j.promptFeedback?.blockReason || "пусто") + ") — попробуй ещё раз");
+  return { text: parts.map((p) => p.text || "").join(""), usage: j.usageMetadata || null };
+}
+
+export async function analyze(input, s = settings()) {
+  const prompt = "Trading journal data (JSON):\n" + JSON.stringify(input);
+  const { text, usage } = s.provider === "gemini" ? await callGemini(prompt, s.gkey, activeModel(s)) : await callClaude(prompt, s.key, s.model);
+  const j = { usage };
+  const a = text.indexOf("{"), e = text.lastIndexOf("}");
   let data;
-  try { data = JSON.parse(text.slice(s, e + 1)); } catch { throw new Error("ИИ вернул ответ не в том формате — попробуй ещё раз"); }
+  try { data = JSON.parse(text.slice(a, e + 1)); } catch { throw new Error("ИИ вернул ответ не в том формате — попробуй ещё раз"); }
   const arr = (x) => (Array.isArray(x) ? x : []);
   return {
     verdict: String(data.verdict || ""), score: Math.max(0, Math.min(100, Math.round(+data.score || 0))), score_reason: String(data.score_reason || ""),
