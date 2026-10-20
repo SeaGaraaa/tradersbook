@@ -828,3 +828,7 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .ed-foot .btn { width: 100%; padding: 14px; font-size: 16px; font-weight: 700; border-radius: 12px; }
   .ed-body { padding-bottom: 20px; }
 }
+/* Dashboard: четыре таблицы анализа — по две в ряд, если не помещаются; таблица не обрезается */
+.ana-grid { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.ana-grid > .panel { min-width: 0; overflow-x: auto; }
+.ana-grid { grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); }
