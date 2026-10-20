@@ -971,3 +971,18 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .ai-score span { font-size: 9px; letter-spacing: .02em; } .ai-sec.nw-setbox { flex-direction: column !important; align-items: stretch !important; gap: 8px !important; }
 @media (max-width: 640px) { .ai-txt { display: none; } .ai-btn { min-width: 34px !important; padding: 0 !important; font-size: 16px !important; } }
 @media (max-width: 440px) { body.ai-on .brand > span:not(.logo):not(.spinner) { display: none !important; } }
+
+/* ---------- распознавание скриншотов TradingView ---------- */
+.ai-tvbox { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px dashed var(--line); border-radius: 12px; }
+.ai-tvbox .ai-switch { align-items: flex-start; line-height: 1.4; }
+.ai-tvbox .ai-switch span { flex: none; margin-top: -1px; }
+.tv-banner { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; margin-bottom: 14px; font-size: 13.5px; line-height: 1.45; border: 1px solid var(--line); background: var(--panel); }
+.tv-banner.busy { flex-direction: row; align-items: center; gap: 12px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.tv-banner.ok { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.tv-banner.err { border-color: var(--lose); background: var(--lose-bg); color: var(--lose); }
+.tv-banner b { color: var(--text); }
+.tv-banner.err b { color: var(--lose); }
+.tv-diff { color: var(--imp-med); }
+.tv-tip { font-size: 12px; }
+.tv-b-act { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+.ai-spin.sm { width: 22px; height: 22px; border-width: 2px; }

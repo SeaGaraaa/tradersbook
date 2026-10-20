@@ -190,3 +190,43 @@ export async function analyze(input, s = settings()) {
 
 export const tradeIds = (list) => (Array.isArray(list) ? list : []).map((x) => parseInt(String(x).replace("#", ""), 10)).filter(Number.isFinite);
 export { parseDT };
+
+// Картинка + задание -> JSON (распознавание скриншотов). image: { b64, mime }.
+export async function visionJSON(prompt, image, s = settings()) {
+  const key = activeKey(s);
+  if (!key) throw new Error("Нет ключа AI — включи AI в разделе API и вставь ключ");
+  let text = "";
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 4 * 60e3);
+  try {
+    if (s.provider === "gemini") {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel(s))}:generateContent`, {
+        method: "POST", signal: ctl.signal, headers: { "x-goog-api-key": key, "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ inline_data: { mime_type: image.mime, data: image.b64 } }, { text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0, maxOutputTokens: 8192 },
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(res.status === 429 ? "Бесплатный лимит Gemini на сейчас исчерпан — попробуй через минуту" : "Gemini: " + (j?.error?.message || res.status));
+      text = (j.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || "").join("");
+    } else {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", signal: ctl.signal,
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "content-type": "application/json" },
+        body: JSON.stringify({ model: s.model, max_tokens: 3000, messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: image.mime, data: image.b64 } }, { type: "text", text: prompt + "\nReturn only the JSON." }] }] }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("Claude API: " + (j?.error?.message || res.status));
+      text = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
+    }
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error("ИИ не ответил за 4 минуты — попробуй ещё раз");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  try { return JSON.parse(text.slice(a, b + 1)); } catch { throw new Error("ИИ вернул ответ не в том формате — попробуй ещё раз"); }
+}

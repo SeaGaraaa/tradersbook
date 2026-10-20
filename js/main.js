@@ -11,9 +11,10 @@ import * as Conn from "./connect.js";
 import * as News from "./news.js";
 import * as Lot from "./lot.js";
 import * as AI from "./ai.js";
+import * as TV from "./tvread.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
-  num, isNum, parseDT, fmtDT, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
+  num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
   fmtNum, fmtSigned, fmtPct, fmtDuration, esc, tvImage, driveId, directImage, lsGet, lsSet, lsDel,
 } from "./util.js";
 
@@ -676,6 +677,7 @@ function renderEditor() {
         <button class="btn primary" data-act="save">${tr("Сохранить")}</button>
       </div>
       <div class="ed-body">
+        ${tvBanner()}
         ${bt ? listField("idea", tr("Idea — какую идею тестируешь"), S.lists.idea, f.idea ? [f.idea] : []) : ""}
         <div class="row2">
           <label>Open<input type="datetime-local" data-k="open" value="${esc(f.open)}"></label>
@@ -1588,7 +1590,9 @@ function aiSettingsHtml() {
         <div class="lt-row2">
           <label class="lt-field"><span>${tr("Ключ Anthropic API")}</span><input type="password" autocomplete="new-password" data-aif="key" value="${esc(s.key)}" placeholder="sk-ant-…" spellcheck="false"></label>
           <label class="lt-field"><span>${tr("Модель")}</span><select data-aif="model">${AI.MODELS.map(([m, l]) => `<option value="${m}" ${s.model === m ? "selected" : ""}>${esc(tr(l))}</option>`).join("")}</select></label></div>`}
-      ${AI.activeKey(s) ? `<button type="button" class="btn primary sm" data-act="ai-open" style="align-self:flex-start">✦ ${tr("Открыть AI-разбор")}</button>` : ""}` : ""}
+      ${AI.activeKey(s) ? `<div class="ai-tvbox"><label class="ai-switch"><input type="checkbox" data-aitv="1" ${s.tvread ? "checked" : ""}><span></span>${tr("Читать скриншоты TradingView в карточке сделки")}</label>
+        <div class="hint" style="margin:0">${tr("Прикрепляешь скриншот или ссылку TradingView — ИИ читает актив, направление и время входа (по инструменту позиции и шкале времени) и заполняет пару, направление, время, сессию и RR. Каждый скриншот — один запрос к ИИ.")}</div></div>
+        <button type="button" class="btn primary sm" data-act="ai-open" style="align-self:flex-start">✦ ${tr("Открыть AI-разбор")}</button>` : ""}` : ""}
     </div>
   </section>`;
 }
@@ -1614,6 +1618,112 @@ function aiBtnSync() {
   b.hidden = !AI.enabled();
   document.body.classList.toggle("ai-on", AI.enabled());
   b.classList.toggle("on", S.view === "ai");
+}
+
+// ---------------- распознавание скриншотов TradingView в карточке сделки ----------------
+const TV_LABEL = { pair: "Пара", dir: "Направление", open: "Время входа", session: "Сессия", rr: "RR" };
+const tvOn = () => { const s = AI.settings(); return s.enabled && s.tvread && !!AI.activeKey(s); };
+const blobToB64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+async function blobPixels(blob) {
+  try {
+    const bm = await createImageBitmap(blob);
+    const c = document.createElement("canvas");
+    c.width = bm.width; c.height = bm.height;
+    const x = c.getContext("2d", { willReadFrequently: true });
+    x.drawImage(bm, 0, 0);
+    return x.getImageData(0, 0, c.width, c.height);
+  } catch { return null; }
+}
+
+// Ссылка TradingView (tradingview.com/x/…) -> картинка снимка
+async function tvFromLink(url) {
+  const img = tvImage(url);
+  if (!img || !tvOn()) return;
+  try { const r = await fetch(img); if (r.ok) tvRecognize(await r.blob()); } catch { /* картинка недоступна — без распознавания */ }
+}
+
+async function tvRecognize(blob) {
+  const ed = S.ed;
+  if (!ed || !tvOn() || ed.tv?.busy) return;
+  ed.tv = { busy: true };
+  renderEditor();
+  try {
+    const [b64, img] = await Promise.all([blobToB64(blob), blobPixels(blob)]);
+    const raw = await TV.readShot({ b64, mime: blob.type || "image/png" }, AI.settings());
+    const e = TV.entryFromShot(raw, new Date(), img);
+    if (S.ed === ed) tvApply(ed, e);
+  } catch (err) {
+    if (S.ed === ed) ed.tv = { error: err.message || String(err) };
+  } finally {
+    if (S.ed === ed) { if (ed.tv) ed.tv.busy = false; renderEditor(); }
+  }
+}
+
+// Значения для формы из распознанного
+function tvValues(e) {
+  const v = {};
+  if (e.pair) v.pair = Conn.pairName(e.pair, S.lists.pair);
+  if (e.dir) v.dir = e.dir;
+  if (e.chartMs != null) {
+    const wall = e.utcMs != null ? e.utcMs - new Date(e.utcMs).getTimezoneOffset() * 60000 : e.chartMs; // время на часах устройства
+    const serial = wall / 864e5 + 25569;
+    v.open = toInput(serial);
+    v.session = sessionOf(serial);
+  }
+  if (+e.entry > 0 && +e.sl > 0 && +e.tp > 0 && +e.entry !== +e.sl) v.rr = String(Math.round(Math.abs(e.tp - e.entry) / Math.abs(e.entry - e.sl) * 100) / 100);
+  return v;
+}
+
+function tvApply(ed, e) {
+  const f = ed.form, v = tvValues(e), isNew = !ed.n, touched = ed.touched || {};
+  const filled = [], differs = [], prev = {};
+  for (const k of ["pair", "dir", "open", "rr"]) {
+    if (v[k] == null) continue;
+    const cur = String(f[k] ?? "");
+    const free = !cur || (isNew && !touched[k]);
+    if (free) {
+      prev[k] = f[k]; f[k] = v[k]; filled.push(k);
+      if (k === "open" && f.sessionAuto !== false && v.session) { prev.session = f.session; f.session = v.session; filled.push("session"); }
+    } else if (cur !== v[k]) differs.push(k);
+  }
+  ed.tv = { e, v, filled, differs, prev };
+  saveDraft();
+}
+
+function tvBanner() {
+  const t = S.ed?.tv;
+  if (!t) return "";
+  if (t.busy) return `<div class="tv-banner busy"><span class="ai-spin sm"></span><div><b>✦ ${tr("Читаю скриншот TradingView…")}</b>
+    <div class="muted">${AI.settings().provider === "gemini" ? tr("Бесплатный Gemini: обычно 1–3 минуты. Можно заполнять остальное.") : tr("Обычно 10–30 секунд. Можно заполнять остальное.")}</div></div></div>`;
+  if (t.error) return `<div class="tv-banner err"><b>✦ ${tr("Не получилось прочитать скриншот")}</b><div>${esc(t.error)}</div></div>`;
+  const e = t.e, v = t.v;
+  const when = v.open ? fmtDT(fromInput(v.open)) : "";
+  const prec = e.how === "label" ? tr("точно — по подписи времени") : e.how === "axis" ? tr("по шкале времени, ±{n} мин", { n: e.approxMin || "?" }) : "";
+  const found = [v.pair, v.dir, when].filter(Boolean).join(" · ") || tr("на скриншоте не нашлось ни актива, ни входа");
+  return `<div class="tv-banner ok">
+    <div class="tv-b-h"><b>✦ ${tr("Со скриншота")}:</b> ${esc(found)}${prec ? ` <span class="muted">(${prec})</span>` : ""}</div>
+    ${t.filled.length ? `<div>${tr("Заполнено")}: ${t.filled.map((k) => tr(TV_LABEL[k])).join(", ")}. ${tr("Проверь, особенно время.")}</div>` : ""}
+    ${t.differs.length ? `<div class="tv-diff">${tr("На скриншоте другое")}: ${t.differs.map((k) => `${tr(TV_LABEL[k])} — <b>${esc(k === "open" ? when : v[k])}</b>`).join(", ")}</div>` : ""}
+    ${e.how === "axis" ? `<div class="muted tv-tip">${tr("Совет: перед скриншотом наведи перекрестие на свечу входа — TradingView покажет время на шкале, и оно прочитается до минуты.")}</div>` : ""}
+    <div class="tv-b-act">
+      ${t.differs.length ? `<button type="button" class="btn ghost sm" data-tvset="1">${tr("Подставить со скриншота")}</button>` : ""}
+      ${t.filled.length ? `<button type="button" class="link-btn" data-tvundo="1">${tr("Отменить")}</button>` : ""}
+      <button type="button" class="link-btn muted" data-tvclose="1">${tr("Скрыть")}</button>
+    </div></div>`;
+}
+
+function tvClick(b) {
+  const ed = S.ed, t = ed?.tv;
+  if (!t) return false;
+  if (b.dataset.tvundo) { for (const [k, val] of Object.entries(t.prev)) ed.form[k] = val; ed.tv = null; renderEditor(); return true; }
+  if (b.dataset.tvclose) { ed.tv = null; renderEditor(); return true; }
+  if (b.dataset.tvset) {
+    for (const k of t.differs) { t.prev[k] = ed.form[k]; ed.form[k] = t.v[k]; t.filled.push(k); if (k === "open" && t.v.session) { t.prev.session = ed.form.session; ed.form.session = t.v.session; } }
+    t.differs = [];
+    renderEditor();
+    return true;
+  }
+  return false;
 }
 
 function renderStrategyEditor() {
@@ -2178,6 +2288,8 @@ function addLink(tf, value) {
   if (!urls.length) { if (value.trim()) toast(tr("Это не ссылка"), true); return; }
   (S.ed.form.shots[tf] ||= []).push(...urls);
   renderEditor();
+  const tvl = urls.find((u) => tvImage(u));
+  if (tvl) tvFromLink(tvl);
 }
 
 async function uploadTo(tf, file) {
@@ -2187,6 +2299,7 @@ async function uploadTo(tf, file) {
   const k = tf;
   const when = (f.open || "").replace("T", "_").replace(":", "");
   const ext = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+  if (tvOn()) tvRecognize(file); // распознать скриншот параллельно с загрузкой
   const name = `${ed.mode === "bt" ? "BT_" : ""}${when || "trade"}_${f.pair || "PAIR"}_${tf.trim()}.${ext}`;
   ed.uploading[k] = (ed.uploading[k] || 0) + 1;
   renderEditor();
@@ -2292,10 +2405,12 @@ function editorEvents() {
     if (!b || !S.ed) return;
     const f = S.ed.form;
     if (b.dataset.act === "cancel") { if (confirm(tr("Закрыть без сохранения?"))) { clearDraft(); closeEditor(); } return; }
+    if (tvClick(b)) return;
     if (b.dataset.act === "save") return saveEditor();
     if (b.dataset.act === "delete") return deleteTrade();
     if (b.dataset.pick === "poi") { const p = b.dataset.val; f.poi = f.poi.includes(p) ? f.poi.filter((x) => x !== p) : [...f.poi, p]; return renderEditor(); }
     if (["entry", "idea", "pair"].includes(b.dataset.pick)) {
+      (S.ed.touched ||= {})[b.dataset.pick] = true;
       const k = b.dataset.pick; f[k] = f[k] === b.dataset.val ? "" : b.dataset.val; return renderEditor();
     }
     if (b.dataset.manage) { S.ed.manage = S.ed.manage === b.dataset.manage ? null : b.dataset.manage; renderEditor(); $(`input[data-add="${b.dataset.manage}"]`)?.focus(); return; }
@@ -2306,7 +2421,7 @@ function editorEvents() {
       return updateList(kind, S.lists[kind].filter((x) => x !== val));
     }
     const sg = b.closest("[data-seg]");
-    if (sg) { const k = sg.dataset.seg; f[k] = f[k] === b.dataset.val ? "" : b.dataset.val; return renderEditor(); }
+    if (sg) { const k = sg.dataset.seg; (S.ed.touched ||= {})[k] = true; f[k] = f[k] === b.dataset.val ? "" : b.dataset.val; return renderEditor(); }
     if (b.dataset.del) { f.shots[rowTf(b)]?.splice(+b.dataset.del, 1); return renderEditor(); }
     if (b.dataset.img) return openViewer(b.dataset.img);
   });
@@ -2314,6 +2429,7 @@ function editorEvents() {
     const k = e.target.dataset.k;
     if (!k || !S.ed) return;
     const f = S.ed.form;
+    (S.ed.touched ||= {})[k] = true;
     f[k] = e.target.value;
     if (k === "session") f.sessionAuto = false;
     if (k === "open" && f.sessionAuto && fromInput(f.open) !== "") {
@@ -2437,6 +2553,7 @@ function events() {
   $("#view").addEventListener("mouseleave", () => { const t = $("#chartTip"); if (t) t.hidden = true; });
   $("#view").addEventListener("change", (e) => {
     if (S.view === "lot" && lotChange(e.target)) return;
+    if (e.target.dataset.aitv) { AI.saveSettings({ ...AI.settings(), tvread: e.target.checked }); renderConnect(); return; }
     if (e.target.dataset.aion) { AI.saveSettings({ ...AI.settings(), enabled: e.target.checked }); aiBtnSync(); renderConnect(); return; }
     if (e.target.dataset.aif) { AI.saveSettings({ ...AI.settings(), [e.target.dataset.aif]: e.target.value.trim() }); aiBtnSync(); renderConnect(); if (e.target.dataset.aif === "gkey") aiLoadGeminiModels(); return; }
     if (e.target.dataset.aidate) { AIV[e.target.dataset.aidate] = e.target.value; renderAI(); return; }
