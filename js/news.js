@@ -9,7 +9,7 @@ export const RANGES = ["today", "tomorrow", "week", "next", "past"];
 export const DEFAULT = { cur: CURRENCIES.slice(), impact: ["High", "Medium", "Low", "Holiday"], types: null, range: "week", q: "", window: 15, notify: false };
 let F = { ...DEFAULT };
 let DATA = { events: [], fetched: "" };
-let loadedAt = 0;
+let loadedAt_ = 0;
 
 export const filter = () => F;
 export function setFilter(json) {
@@ -23,13 +23,14 @@ export function setFilter(json) {
 setFilter(lsGet("tj.news")); // до загрузки таблицы — последний фильтр с этого устройства
 
 export const data = () => DATA;
+export const loadedAt = () => loadedAt_;
 export async function load(force = false) {
-  if (!force && Date.now() - loadedAt < 4 * 60e3 && DATA.events.length) return DATA;
+  if (!force && Date.now() - loadedAt_ < 4 * 60e3 && DATA.events.length) return DATA;
   const r = await fetch("calendar.json?t=" + Math.floor(Date.now() / 60e3), { cache: "no-store" });
   if (!r.ok) throw new Error("calendar.json: " + r.status);
   const d = await r.json();
   DATA = { ...d, events: (d.events || []).map((e) => ({ ...e, ms: Date.parse(e.t) })) };
-  loadedAt = Date.now();
+  loadedAt_ = Date.now();
   return DATA;
 }
 

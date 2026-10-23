@@ -1364,7 +1364,7 @@ function renderNews() {
       <div class="nw-row nw-thead"><div>${tr("Время")}</div><div>${tr("Валюта")}</div><div>${tr("Влияние")}</div><div>${tr("Событие")}</div><div>${tr("Прогноз")}</div><div>${tr("Пред.")}</div></div>
       ${rows || `<div class="empty">${D.events.length ? tr("По этому фильтру новостей нет") : tr("Календарь загружается…")}</div>`}
     </section>
-    <div class="hint nw-foot">${tr("Источник: Forex Factory. Выгрузка обновляется раз в час (так требует Forex Factory){t}. Фактические значения в выгрузке нет — после выхода новости нажми «вышла ↗», откроется событие на сайте.", { t: fetched ? tr(", последняя — в {h}", { h: hm(fetched.getTime()) }) : "" })}</div>
+    <div class="hint nw-foot">${tr("Источник: Forex Factory. Выгрузка обновляется раз в час (так требует Forex Factory){t}. Фактические значения в выгрузке нет — после выхода новости нажми «вышла ↗», откроется событие на сайте.", { t: fetched ? tr(", последняя — в {h}", { h: hm(fetched.getTime()) }) : "" })} ${News.loadedAt() ? tr("Приложение проверило в {h}.", { h: hm(News.loadedAt()) }) : ""}</div>
   </div>`;
 }
 
@@ -1405,12 +1405,19 @@ function newsBar() {
 }
 
 // Раз в секунду — отсчёт и полоса; раз в 5 минут — свежий календарь; напоминания перед сильными новостями.
+// Свежий календарь: раз в 5 минут, при возвращении в приложение (iPhone усыпляет его в фоне) и по кнопке ⟳.
+function newsRefresh(force = false) {
+  return News.load(force).then(() => { newsErr = ""; if (S.view === "news") renderNews(); newsBar(); })
+    .catch(() => { newsErr = tr("Не удалось загрузить календарь — проверь интернет"); if (S.view === "news") renderNews(); });
+}
 function newsStart() {
   if (newsTick) return;
-  const refresh = () => News.load().then(() => { newsErr = ""; if (S.view === "news") renderNews(); newsBar(); })
-    .catch(() => { newsErr = tr("Не удалось загрузить календарь — проверь интернет"); if (S.view === "news") renderNews(); });
-  refresh();
-  setInterval(refresh, 5 * 60e3);
+  newsRefresh();
+  setInterval(() => newsRefresh(), 5 * 60e3);
+  const wake = () => { if (document.visibilityState === "visible" && Date.now() - News.loadedAt() > 60e3) newsRefresh(true); };
+  document.addEventListener("visibilitychange", wake);
+  window.addEventListener("focus", wake);
+  window.addEventListener("pageshow", wake);
   newsTick = setInterval(() => {
     const now = Date.now();
     $$("[data-cd]").forEach((el) => (el.textContent = left(Math.abs(+el.dataset.cd - now))));
@@ -2651,7 +2658,7 @@ function events() {
   $("#apiBtn").onclick = () => setView("connect");
   $("#setBtn").onclick = () => setView("settings");
   $("#aiBtn").onclick = () => setView("ai");
-  $("#refresh").onclick = () => reload().then((ok) => ok && toast(tr("Обновлено")));
+  $("#refresh").onclick = () => { newsRefresh(true); reload().then((ok) => ok && toast(tr("Обновлено"))); };
   $("#logout").onclick = () => { if (confirm(tr("Выйти из Google-аккаунта в приложении?"))) { auth.logout(); showLogin(); } };
   $("#view").addEventListener("click", (e) => {
     const btn = e.target.closest("button");

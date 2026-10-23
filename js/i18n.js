@@ -635,4 +635,5 @@ export const EN = {
   "Чикаго": "Chicago",
   "Подключения и AI": "Connections and AI",
   "Биржи и MT4/MT5 (перенос сделок), отчёт MT5 файлом, AI-разбор журнала и чтение скриншотов TradingView": "Exchanges and MT4/MT5 (trade import), MT5 report file, AI journal review and TradingView screenshot reading",
+  "Приложение проверило в {h}.": "The app checked at {h}.",
 };
