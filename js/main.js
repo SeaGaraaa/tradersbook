@@ -1270,7 +1270,7 @@ function connectClick(b) {
 
 // ---------------- новости (экономический календарь Forex Factory) ----------------
 const IMP_RU = { High: "Высокое", Medium: "Среднее", Low: "Низкое", Holiday: "Выходной" };
-const RANGE_RU = { today: "Сегодня", tomorrow: "Завтра", week: "Неделя", next: "24 часа", past: "Прошедшие" };
+const RANGE_RU = { today: "Сегодня", tomorrow: "Завтра", week: "7 дней", nextweek: "След. неделя", next: "24 часа", past: "Прошедшие" };
 let newsSaveT = 0, newsTick = 0, newsErr = "";
 
 const hm = (ms) => new Date(ms).toLocaleTimeString(LANG === "en" ? "en-GB" : "ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: journalTz() });
@@ -2797,7 +2797,11 @@ async function boot() {
       const go = () => (S.ed ? setTimeout(go, 2000) : location.reload());
       go();
     });
-    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => {
+      r.update();
+      // iPhone держит приложение в фоне часами — проверять новую версию при каждом возвращении
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") r.update().catch(() => {}); });
+    }).catch(() => {});
   }
 }
 

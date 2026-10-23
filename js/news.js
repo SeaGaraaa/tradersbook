@@ -4,7 +4,7 @@ import { lsGet, lsSet, msToSerial, serialToMs } from "./util.js";
 
 export const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF", "CNY", "All"];
 export const IMPACTS = ["High", "Medium", "Low", "Holiday"];
-export const RANGES = ["today", "tomorrow", "week", "next", "past"];
+export const RANGES = ["today", "tomorrow", "next", "week", "nextweek", "past"];
 
 export const DEFAULT = { cur: CURRENCIES.slice(), impact: ["High", "Medium", "Low", "Holiday"], types: null, range: "week", q: "", window: 15, notify: false };
 let F = { ...DEFAULT };
@@ -64,7 +64,12 @@ function bounds(range, now = Date.now()) {
   if (range === "tomorrow") return [t0 + day, t0 + 2 * day];
   if (range === "next") return [now - 60 * 60e3, now + day]; // ближайшие 24 часа (и последний час)
   if (range === "past") return [now - 8 * 7 * day, now];
-  return [-Infinity, Infinity]; // неделя: всё, что есть в выгрузке за текущую неделю
+  if (range === "nextweek") { // следующая неделя с воскресенья, как на Forex Factory
+    const today = Math.floor(msToSerial(now)), wd = new Date((today - 25569) * 864e5).getUTCDay();
+    const s = serialToMs(today - wd + 7);
+    return [s, s + 7 * day];
+  }
+  return [t0, t0 + 7 * day]; // «7 дней»: с начала сегодняшнего дня, прошедшие дни не показываются
 }
 
 export function visible(events = DATA.events, f = F, now = Date.now()) {
@@ -72,12 +77,6 @@ export function visible(events = DATA.events, f = F, now = Date.now()) {
   const q = f.q.trim().toLowerCase();
   const types = f.types || TYPES; // null — все типы (и новые, если появятся)
   let list = events.filter((e) => (e.cur === "All" || f.cur.includes(e.cur)) && f.impact.includes(e.impact) && types.includes(typeOf(e)) && e.ms >= a && e.ms < b && (!q || e.title.toLowerCase().includes(q)));
-  if (f.range === "week") {
-    // «Неделя» — текущая неделя с воскресенья, как на Forex Factory
-    const today = Math.floor(msToSerial(now)), wd = new Date((today - 25569) * 864e5).getUTCDay();
-    const s = serialToMs(today - wd);
-    list = list.filter((e) => e.ms >= s && e.ms < s + 7 * 864e5);
-  }
   if (f.range === "past") list = list.reverse();
   return list;
 }
