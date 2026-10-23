@@ -591,7 +591,7 @@ function btProfit(f) {
 }
 function btAutoProfit() {
   const ed = S.ed;
-  if (!ed || ed.mode !== "bt" || ed.profitManual) return;
+  if (!ed || ed.profitManual) return;
   const p = btProfit(ed.form);
   if (p == null) return;
   ed.form.profit = p;
@@ -608,16 +608,17 @@ function openEditor(n, form = null) {
     mode: S.mode, n: t ? t.n : null, key: t ? { open: t.v[0], pair: t.v[3] } : null,
     form: form || toForm(t, isBT() ? activeIdea() : ""), uploading: {}, activeTf: "H4", manage: null,
   };
-  if (isBT()) {
+  {
     const f = S.ed.form;
-    // новая сделка бэктеста — тот же риск, что в прошлой
+    // новая сделка — тот же риск, что в прошлой сделке этого журнала
     if (!t && !form && !String(f.risk).trim()) {
-      const last = [...trades("bt")].sort((a, b) => parseDT(b.v[0]) - parseDT(a.v[0])).find((x) => num(x.v[9]) > 0);
+      const last = [...trades(S.mode)].sort((a, b) => parseDT(b.v[0]) - parseDT(a.v[0])).find((x) => num(x.v[9]) > 0);
       if (last) f.risk = fmtNum(num(last.v[9]));
     }
     // свой Profit, который не совпадает с расчётом, не трогаем
     const calc = btProfit(f);
     S.ed.profitManual = !!(t && String(f.profit).trim() && calc != null && Math.abs(num(f.profit) - num(calc)) > 0.005);
+    if (!String(f.profit).trim() && calc != null) f.profit = fmtNum(num(calc)); // пустой Profit — сразу посчитать
   }
   $("#editor").hidden = false;
   document.body.classList.add("modal-open");
@@ -728,7 +729,7 @@ function renderEditor() {
           <label>Risk, %<input inputmode="decimal" data-k="risk" value="${esc(f.risk)}"></label>
           <label>Profit, %<input inputmode="decimal" data-k="profit" value="${esc(f.profit)}"></label>
         </div>
-        ${bt ? `<div class="hint pf-note"><span class="bt-auto" ${S.ed.profitManual ? "hidden" : ""}>${tr("Profit считается сам: Win = Risk × RR, Lose = −Risk, BE = 0.")}</span>
+        ${true ? `<div class="hint pf-note"><span class="bt-auto" ${S.ed.profitManual ? "hidden" : ""}>${tr("Profit считается сам: Win = Risk × RR, Lose = −Risk, BE = 0.")}${bt ? "" : " " + tr("Если сделка есть в MT5, автосинхронизация заменит его точным значением из терминала.")}</span>
           <span class="bt-manual" ${S.ed.profitManual ? "" : "hidden"}>${tr("Profit вписан вручную.")} <button type="button" class="link-btn" data-act="bt-auto">${tr("Считать автоматически")}</button></span></div>`
         : `<div class="hint pf-note">${tr("На реальном счёте Profit берётся из терминала: автоперенос MT5 на компьютере или раздел API.")}</div>`}
         <div class="hint" id="rHint">${Number.isFinite(r) ? tr("Итог в R: {r}", { r: fmtSigned(r) }) : bt ? tr("Совет: в бэктесте ставь одинаковый Risk (например 0,5), тогда идеи честно сравниваются в R.") : ""}</div>
@@ -2473,7 +2474,7 @@ function editorEvents() {
       const s = $('select[data-k="session"]', el);
       if (s) { if (![...s.options].some((o) => o.value === f.session)) s.add(new Option(f.session)); s.value = f.session; }
     }
-    if (k === "profit" && S.ed.mode === "bt") { S.ed.profitManual = String(e.target.value).trim() !== ""; const a = $("#editor .bt-auto"); if (a) a.hidden = S.ed.profitManual; const m = $("#editor .bt-manual"); if (m) m.hidden = !S.ed.profitManual; }
+    if (k === "profit") { S.ed.profitManual = String(e.target.value).trim() !== ""; const a = $("#editor .bt-auto"); if (a) a.hidden = S.ed.profitManual; const m = $("#editor .bt-manual"); if (m) m.hidden = !S.ed.profitManual; }
     if (["risk", "rr"].includes(k)) btAutoProfit();
     if (["risk", "profit"].includes(k)) {
       const r = num(f.profit) / num(f.risk);
