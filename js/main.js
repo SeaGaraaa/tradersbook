@@ -67,11 +67,18 @@ function renderSettings() {
         <div class="nw-ghead"><span>${tr("Тема")}</span></div>
         ${pills("data-settheme", document.documentElement.dataset.theme === "light" ? "light" : "dark", [["dark", tr("Тёмная")], ["light", tr("Светлая")]])}
       </div>
+      <div class="nw-group set-api">
+        <div class="nw-ghead"><span>API</span></div>
+        <button type="button" class="set-link" data-setapi="1">
+          <span><b>${tr("Подключения и AI")}</b><small class="muted">${tr("Биржи и MT4/MT5 (перенос сделок), отчёт MT5 файлом, AI-разбор журнала и чтение скриншотов TradingView")}</small></span>
+          <span class="set-arrow">›</span></button>
+      </div>
     </section>
   </div>`;
 }
 
 function settingsClick(b) {
+  if (b.dataset.setapi) { setView("connect"); return true; }
   if (b.dataset.setlang) { if (b.dataset.setlang !== LANG) $("#lang")?.click(); setTimeout(() => S.view === "settings" && renderSettings(), 0); return true; }
   if (b.dataset.settheme) { const cur = document.documentElement.dataset.theme === "light" ? "light" : "dark"; if (b.dataset.settheme !== cur) $("#theme")?.click(); renderSettings(); return true; }
   return false;
@@ -262,7 +269,7 @@ function render() {
   document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect", "lot", "settings"].includes(S.view));
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === S.view));
   $("#apiBtn")?.classList.toggle("on", S.view === "connect");
-  $("#setBtn")?.classList.toggle("on", S.view === "settings");
+  $("#setBtn")?.classList.toggle("on", S.view === "settings" || S.view === "connect");
   aiBtnSync();
   $("#fab").hidden = S.view !== "journal";
   if (S.view === "journal") renderJournal();
@@ -1097,7 +1104,7 @@ function renderConnect() {
   };
   const pv = CX.preview;
   $("#view").innerHTML = `<div class="cx-page">
-    <div class="cx-head"><button type="button" class="btn ghost sm" data-act="cx-back">← ${tr("Журнал")}</button>
+    <div class="cx-head"><button type="button" class="btn ghost sm" data-act="cx-back">← ${tr("Настройки")}</button>
       <h2>API</h2><span class="muted">${tr("биржи и торговые счета")}</span></div>
     <div class="hint cx-note">${tr("Сделки переносятся в журнал сами: время, пара, направление, результат, Profit, а для MT — ещё Risk и RR по стопу. POI, вход, скриншоты и заметки дописываешь ты. Ключи хранятся только на этом устройстве и уходят только на сайт биржи или MetaApi. Создавай ключи только для чтения.")}</div>
     ${pv ? "" : aiSettingsHtml()}
@@ -1249,7 +1256,7 @@ async function cxAdd() {
 
 function connectClick(b) {
   const d = b.dataset, a = d.act;
-  if (a === "cx-back") { setView("journal"); return true; }
+  if (a === "cx-back") { setView("settings"); return true; }
   if (d.cxsrc) { CX.adding = CX.adding === d.cxsrc ? "" : d.cxsrc; CX.form = {}; renderConnect(); return true; }
   if (a === "cx-cancel") { CX.adding = ""; CX.form = {}; renderConnect(); return true; }
   if (a === "cx-save") { cxSave(); return true; }
