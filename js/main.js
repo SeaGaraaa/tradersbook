@@ -1283,7 +1283,7 @@ function actualHtml(e, withF = false) {
   const a = News.num(e.actual), f = News.num(e.forecast);
   const d = a == null || f == null ? "" : a > f ? "up" : a < f ? "dn" : "eq";
   const ar = d === "up" ? "▲" : d === "dn" ? "▼" : "";
-  return `<span class="nw-act ${d}" title="${d ? tr(d === "up" ? "Выше прогноза" : d === "dn" ? "Ниже прогноза" : "Как прогноз") : ""}">${esc(e.actual)}${ar ? ` <i>${ar}</i>` : ""}</span>`
+  return `<span class="nw-act ${d}" title="${d ? tr(d === "up" ? "Выше прогноза" : d === "dn" ? "Ниже прогноза" : "Как прогноз") : ""}">${esc(e.actual)}<i>${ar}</i></span>`
     + (withF && e.forecast ? ` <span class="muted">(${tr("прогноз")} ${esc(e.forecast)})</span>` : "");
 }
 
@@ -1332,7 +1332,7 @@ function renderNews() {
       <div class="nw-cur">${esc(e.cur)}</div>
       <div class="nw-imp" title="${tr(IMP_RU[e.impact] || e.impact)} · ${tr(News.TYPE_RU[News.typeOf(e)])}"><span class="imp-dot"></span><span class="imp-txt">${tr(IMP_RU[e.impact] || e.impact)}</span></div>
       <div class="nw-title"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>${src} ${status}</div>
-      <div class="nw-num nw-na"><span class="nw-k">${tr("Факт")}</span>${actualHtml(e) || "—"}</div>
+      <div class="nw-num nw-na"><span class="nw-k">${tr("Факт")}</span>${actualHtml(e) || `<span class="nw-act none">—<i></i></span>`}</div>
       <div class="nw-num nw-nf"><span class="nw-k">${tr("Прогноз")}</span>${esc(e.forecast || "—")}</div>
       <div class="nw-num nw-np"><span class="nw-k">${tr("Пред.")}</span>${esc(e.previous || "—")}</div>
     </div>`;

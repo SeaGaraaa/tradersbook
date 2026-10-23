@@ -1018,3 +1018,9 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .nw-num.nw-na { grid-area: a; } .nw-num.nw-nf { grid-area: f; } .nw-num.nw-np { grid-area: p; }
   .nw-num { white-space: nowrap; line-height: 1.25; } .nw-num .nw-k { display: block; margin: 0 0 1px; font-size: 11px; }
 }
+
+/* Новости: числа и заголовки колонок по правому краю, место под ▲/▼ всегда одно */
+.nw-act i { display: inline-block; width: 14px; text-align: right; }
+.nw-act.none { font-weight: 400; }
+.nw-thead > div:nth-child(n+5) { text-align: right; }
+.nw-thead > div:nth-child(5) { padding-right: 14px; }
