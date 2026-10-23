@@ -1,6 +1,6 @@
 // Экономический календарь (Forex Factory). Данные — calendar.json рядом с приложением: его раз в час
 // обновляет GitHub Actions (scripts/ff_calendar.py). Здесь: загрузка, фильтр, «опасное окно» вокруг новостей.
-import { lsGet, lsSet } from "./util.js";
+import { lsGet, lsSet, msToSerial, serialToMs } from "./util.js";
 
 export const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF", "CNY", "All"];
 export const IMPACTS = ["High", "Medium", "Low", "Holiday"];
@@ -52,8 +52,7 @@ export function currenciesOf(pairs) {
 
 // Границы периода в локальном времени устройства.
 function bounds(range, now = Date.now()) {
-  const d0 = new Date(now); d0.setHours(0, 0, 0, 0);
-  const day = 864e5, t0 = d0.getTime();
+  const day = 864e5, t0 = serialToMs(Math.floor(msToSerial(now))); // полночь в поясе журнала
   if (range === "today") return [t0, t0 + day];
   if (range === "tomorrow") return [t0 + day, t0 + 2 * day];
   if (range === "next") return [now - 60 * 60e3, now + day]; // ближайшие 24 часа (и последний час)
@@ -68,8 +67,9 @@ export function visible(events = DATA.events, f = F, now = Date.now()) {
   let list = events.filter((e) => (e.cur === "All" || f.cur.includes(e.cur)) && f.impact.includes(e.impact) && types.includes(typeOf(e)) && e.ms >= a && e.ms < b && (!q || e.title.toLowerCase().includes(q)));
   if (f.range === "week") {
     // «Неделя» — текущая неделя с воскресенья, как на Forex Factory
-    const s = new Date(now); s.setHours(0, 0, 0, 0); s.setDate(s.getDate() - s.getDay());
-    list = list.filter((e) => e.ms >= s.getTime() && e.ms < s.getTime() + 7 * 864e5);
+    const today = Math.floor(msToSerial(now)), wd = new Date((today - 25569) * 864e5).getUTCDay();
+    const s = serialToMs(today - wd);
+    list = list.filter((e) => e.ms >= s && e.ms < s + 7 * 864e5);
   }
   if (f.range === "past") list = list.reverse();
   return list;

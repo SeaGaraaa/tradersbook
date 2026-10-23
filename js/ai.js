@@ -1,5 +1,5 @@
 // AI-разбор торгового журнала (Claude API напрямую из браузера, ключ пользователя хранится только на устройстве).
-import { lsGet, lsSet, parseDT, num, fmtDT } from "./util.js";
+import { lsGet, lsSet, parseDT, num, fmtDT, nowSerial, serialToDate } from "./util.js";
 
 export const MODELS = [
   ["claude-sonnet-5-5", "Claude Sonnet 5.5 — рекомендую (быстро и точно)"],
@@ -19,12 +19,11 @@ export function removeReport(id) { lsSet(REPORTS, JSON.stringify(reports().filte
 
 // Период в «настенном» времени таблицы (serial). Неделя — с понедельника.
 export function periodRange(kind, from, to) {
-  const now = new Date();
-  const day = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5 + 25569;
-  const today = day(now);
-  const wd = (now.getDay() + 6) % 7; // 0 — понедельник
-  const m0 = Date.UTC(now.getFullYear(), now.getMonth(), 1) / 864e5 + 25569;
-  const pm0 = Date.UTC(now.getFullYear(), now.getMonth() - 1, 1) / 864e5 + 25569;
+  const now = serialToDate(nowSerial()); // «сейчас» в поясе журнала, в UTC-полях
+  const today = Math.floor(nowSerial());
+  const wd = (now.getUTCDay() + 6) % 7; // 0 — понедельник
+  const m0 = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 864e5 + 25569;
+  const pm0 = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1) / 864e5 + 25569;
   switch (kind) {
     case "week": return [today - wd, today + 1];
     case "lastweek": return [today - wd - 7, today - wd];

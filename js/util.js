@@ -13,7 +13,7 @@ export function num(v) {
 
 export const isNum = (v) => !Number.isNaN(num(v));
 
-// Время в таблице — «настенное» время Бухареста без часового пояса,
+// Время в таблице — «настенное» время пояса журнала без часового пояса,
 // поэтому везде работаем с UTC-методами Date, чтобы пояс устройства не влиял.
 export function serialToDate(s) {
   return new Date(Math.round((s - EPOCH_SHIFT) * DAY_MS / 60000) * 60000);
@@ -76,14 +76,12 @@ export function fromInput(v) {
 
 export const sameMinute = (a, b) => Math.abs(a - b) < 0.5 / 1440;
 
-// Сессия по времени входа. Время в журнале — по часам устройства пользователя; переводим его в лондонское
+// Сессия по времени входа. Время в журнале — в поясе журнала (настройка); переводим его в лондонское
 // (Европа и Лондон переводят часы одновременно): Азия 00–07, Франкфурт 07–08, Лондон 08–13, Нью-Йорк 13–24.
 // Для Бухареста (Лондон + 2 ч) это ровно 02–09, 09–10, 10–15, 15–02 — как в sync.py.
 const LONDON_HOUR = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hourCycle: "h23" });
 export function sessionOf(serial) {
-  const w = serialToDate(serial); // «настенное» время в UTC-полях
-  const local = new Date(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate(), w.getUTCHours(), w.getUTCMinutes());
-  const h = Number(LONDON_HOUR.format(local)) % 24;
+  const h = Number(LONDON_HOUR.format(new Date(serialToMs(serial)))) % 24; // время входа -> час по Лондону
   if (h < 7) return "Asia";
   if (h < 8) return "Frankfurt";
   if (h < 13) return "London";
@@ -129,3 +127,38 @@ export const directImage = (url) => /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*
 export function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 export function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } }
 export function lsDel(k) { try { localStorage.removeItem(k); } catch { /* приватный режим */ } }
+
+// ---------- часовой пояс журнала ----------
+// Время в таблице — «настенное» время пояса журнала (настройка пользователя; по умолчанию — пояс устройства).
+let TZ = "";
+export const deviceTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; } };
+export function setJournalTz(z) {
+  try { if (z) new Intl.DateTimeFormat("en-US", { timeZone: z }); TZ = z || ""; } catch { TZ = ""; }
+}
+export const journalTz = () => TZ || deviceTz();
+const fmtCache = new Map();
+// Смещение пояса от UTC в минутах на момент ms (Бухарест летом = +180)
+export function tzOffsetMin(ms, tz = journalTz()) {
+  let f = fmtCache.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    fmtCache.set(tz, f);
+  }
+  const p = Object.fromEntries(f.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+  return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60000);
+}
+// Момент времени -> «настенное» время пояса журнала (serial таблицы, без секунд)
+export const msToSerial = (ms, tz = journalTz()) => (Math.floor(ms / 60000) * 60000 + tzOffsetMin(ms, tz) * 60000) / DAY_MS + EPOCH_SHIFT;
+// «Настенное» время пояса журнала -> момент времени
+export function serialToMs(s, tz = journalTz()) {
+  const w = Math.round((s - EPOCH_SHIFT) * DAY_MS);
+  let ms = w - tzOffsetMin(w, tz) * 60000;
+  ms = w - tzOffsetMin(ms, tz) * 60000; // уточнение у перехода на летнее/зимнее время
+  return ms;
+}
+export const nowSerial = () => msToSerial(Date.now());
+export const tzLabel = (tz = journalTz(), ms = Date.now()) => {
+  const o = tzOffsetMin(ms, tz);
+  return "UTC" + (o >= 0 ? "+" : "−") + Math.floor(Math.abs(o) / 60) + (Math.abs(o) % 60 ? ":" + String(Math.abs(o) % 60).padStart(2, "0") : "");
+};

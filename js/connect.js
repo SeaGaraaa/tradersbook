@@ -1,7 +1,7 @@
 // Подключения: сделки с бирж и торговых счетов -> строки журнала.
 // Всё работает прямо из браузера (биржи и MetaApi разрешают такие запросы). Ключи хранятся только на этом
 // устройстве (localStorage) и уходят только на сайт самой биржи / MetaApi. Нужны ключи «только чтение».
-import { lsGet, lsSet, sessionOf, parseDT, EPOCH_SHIFT } from "./util.js";
+import { lsGet, lsSet, sessionOf, parseDT, EPOCH_SHIFT, msToSerial } from "./util.js";
 import { MAXCOLS } from "./form.js";
 
 const DAY = 864e5;
@@ -305,7 +305,7 @@ const aliasOf = (p) => ALIASES.find((g) => g.includes(p))?.[0] || p;
 // Название пары как в списке пользователя (DAX40 из терминала -> GER40, если в журнале так)
 export const pairName = (s, pairs = []) => { const p = normPair(s), a = aliasOf(p); return pairs.find((x) => aliasOf(normPair(x)) === a) || p; };
 export const normPair = (s) => String(s || "").toUpperCase().replace(/-SWAP$|-FUTURES$/, "").replace(/\.[A-Z0-9]+$/, "").replace(/[-_/ ]/g, "").replace(/\+$/, "");
-const wall = (ms) => (Math.floor(ms / 60000) * 60000 - new Date(ms).getTimezoneOffset() * 60000) / DAY + EPOCH_SHIFT; // время на часах устройства, без секунд
+const wall = (ms) => msToSerial(ms); // время в поясе журнала, без секунд
 const r2 = (x) => Math.round(x * 100) / 100;
 
 export function toRow(t, srcName, pairs = []) {

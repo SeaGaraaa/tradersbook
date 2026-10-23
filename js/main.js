@@ -16,7 +16,76 @@ import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
   fmtNum, fmtSigned, fmtPct, fmtDuration, esc, tvImage, driveId, directImage, lsGet, lsSet, lsDel,
+  journalTz, deviceTz, setJournalTz, tzLabel, nowSerial, msToSerial, serialToMs, tzOffsetMin,
 } from "./util.js";
+
+// ---------------- настройки ----------------
+const TZ_POPULAR = [
+  ["Europe/Bucharest", "Бухарест"], ["Europe/Kyiv", "Киев"], ["Europe/Chisinau", "Кишинёв"], ["Europe/Warsaw", "Варшава"], ["Europe/Berlin", "Берлин"],
+  ["Europe/Prague", "Прага"], ["Europe/London", "Лондон"], ["Europe/Istanbul", "Стамбул"], ["Europe/Moscow", "Москва"], ["Europe/Minsk", "Минск"],
+  ["Asia/Dubai", "Дубай"], ["Asia/Tbilisi", "Тбилиси"], ["Asia/Yerevan", "Ереван"], ["Asia/Almaty", "Алматы"], ["Asia/Tashkent", "Ташкент"],
+  ["Asia/Bangkok", "Бангкок"], ["Asia/Singapore", "Сингапур"], ["America/New_York", "Нью-Йорк"], ["America/Chicago", "Чикаго"], ["UTC", "UTC"],
+];
+let appTz = lsGet("tj.tz") || "";
+setJournalTz(appTz);
+
+function applyAppSettings(json) {
+  try {
+    const d = JSON.parse(json || "null");
+    if (d && typeof d.tz === "string") { appTz = d.tz; setJournalTz(appTz); lsSet("tj.tz", appTz); }
+  } catch { /* испорчено — оставить как есть */ }
+}
+
+function renderSettings() {
+  const dev = deviceTz();
+  const name = (tz) => { const p = TZ_POPULAR.find(([z]) => z === tz); return p ? tr(p[1]) : tz.replace(/^.*\//, "").replace(/_/g, " "); };
+  const opt = (tz, label) => `<option value="${esc(tz)}" ${appTz === tz ? "selected" : ""}>${esc(label)} · ${tzLabel(tz)}</option>`;
+  let all = [];
+  try { all = Intl.supportedValuesOf("timeZone").filter((z) => !TZ_POPULAR.some(([p]) => p === z)); } catch { /* старый браузер */ }
+  const now = nowSerial();
+  const differs = appTz && tzOffsetMin(Date.now(), appTz) !== tzOffsetMin(Date.now(), dev);
+  const pills = (attr, val, opts) => `<div class="nw-pills">${opts.map(([v, l]) => `<button type="button" ${attr}="${v}" class="${val === v ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  $("#view").innerHTML = `<div class="lt-page set-page">
+    <div class="nw-head"><h2>${tr("Настройки")}</h2></div>
+    <section class="panel nw-filters clx">
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Часовой пояс журнала")}</span></div>
+        <select data-settz="1">
+          <option value="" ${appTz ? "" : "selected"}>${tr("Как на устройстве")} — ${esc(name(dev))} · ${tzLabel(dev)}</option>
+          <optgroup label="${tr("Популярные")}">${TZ_POPULAR.map(([z, l]) => opt(z, tr(l))).join("")}</optgroup>
+          ${all.length ? `<optgroup label="${tr("Все пояса")}">${all.map((z) => opt(z, z.replace(/_/g, " "))).join("")}</optgroup>` : ""}
+        </select>
+        <div class="set-now"><b>${esc(fmtDT(now))}</b> <span class="muted">· ${tzLabel()} · ${tr("сейчас сессия")} <b>${esc(sessionOf(now))}</b></span></div>
+        ${differs ? `<div class="lt-alert warn">${tr("Пояс устройства сейчас другой ({d}, {l}). Время сделок в приложении считается по поясу журнала.", { d: esc(name(dev)), l: tzLabel(dev) })}</div>` : ""}
+        <div class="hint" style="margin:0">${tr("В этом поясе: время новых сделок, определение сессии, импорт из MT5, бирж и скриншотов, «Новости» и чек-листы. Уже записанные сделки не пересчитываются. Автоперенос MT5 на компьютере берёт этот же пояс.")}</div>
+      </div>
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Язык")}</span></div>
+        ${pills("data-setlang", LANG, [["ru", "Русский"], ["en", "English"]])}
+      </div>
+      <div class="nw-group">
+        <div class="nw-ghead"><span>${tr("Тема")}</span></div>
+        ${pills("data-settheme", document.documentElement.dataset.theme === "light" ? "light" : "dark", [["dark", tr("Тёмная")], ["light", tr("Светлая")]])}
+      </div>
+    </section>
+  </div>`;
+}
+
+function settingsClick(b) {
+  if (b.dataset.setlang) { if (b.dataset.setlang !== LANG) $("#lang")?.click(); setTimeout(() => S.view === "settings" && renderSettings(), 0); return true; }
+  if (b.dataset.settheme) { const cur = document.documentElement.dataset.theme === "light" ? "light" : "dark"; if (b.dataset.settheme !== cur) $("#theme")?.click(); renderSettings(); return true; }
+  return false;
+}
+
+async function setTz(v) {
+  appTz = v;
+  setJournalTz(v);
+  lsSet("tj.tz", v);
+  renderSettings();
+  try { await api.saveAppSettings(JSON.stringify({ tz: v })); toast(tr("Часовой пояс сохранён: {l}", { l: tzLabel() })); }
+  catch (e) { handleErr(e); }
+}
+
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -33,7 +102,7 @@ const S = {
   mode: lsGet("tj.mode") === "bt" ? "bt" : "live", // live — реальный счёт, bt — бэктест
   books: { live: { trades: [], sheetId: null }, bt: null },
   lists: { poi: [], entry: [], idea: [], pair: [], session: [] },
-  view: ["journal", "dashboard", "stats", "checklist", "strategy", "news", "lot", "ai"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
+  view: ["journal", "dashboard", "stats", "checklist", "strategy", "news", "lot", "ai", "settings"].includes(lsGet("tj.view")) ? lsGet("tj.view") : "journal",
   run: null, // текущий (несохранённый) чек-лист на вкладке «Чек-лист»
   runs: [], runsSheetId: null, // сохранённые чек-листы (лист Checklists)
   clDraft: null, // правка шаблона чек-листа
@@ -143,6 +212,7 @@ async function reload() {
     CL.load(data.lists.checklist);
     if (data.lists.news) News.setFilter(data.lists.news);
     if (data.lists.lot) ltLoad(data.lists.lot);
+    if (data.lists.settings) applyAppSettings(data.lists.settings);
     render();
     return true;
   } catch (e) {
@@ -189,9 +259,10 @@ function pickIdea(name) {
 }
 
 function render() {
-  document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect", "lot"].includes(S.view));
+  document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect", "lot", "settings"].includes(S.view));
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === S.view));
   $("#apiBtn")?.classList.toggle("on", S.view === "connect");
+  $("#setBtn")?.classList.toggle("on", S.view === "settings");
   aiBtnSync();
   $("#fab").hidden = S.view !== "journal";
   if (S.view === "journal") renderJournal();
@@ -202,6 +273,7 @@ function render() {
   else if (S.view === "news") renderNews();
   else if (S.view === "lot") renderLot();
   else if (S.view === "ai") renderAI();
+  else if (S.view === "settings") renderSettings();
   else renderStats();
   const top = $("#ideaTop");
   if (top) top.oninput = (e) => pickIdea(e.target.value);
@@ -1194,9 +1266,9 @@ const IMP_RU = { High: "Высокое", Medium: "Среднее", Low: "Низ�
 const RANGE_RU = { today: "Сегодня", tomorrow: "Завтра", week: "Неделя", next: "24 часа", past: "Прошедшие" };
 let newsSaveT = 0, newsTick = 0, newsErr = "";
 
-const hm = (ms) => new Date(ms).toLocaleTimeString(LANG === "en" ? "en-GB" : "ru-RU", { hour: "2-digit", minute: "2-digit" });
-const dayTitle = (ms) => new Date(ms).toLocaleDateString(LANG === "en" ? "en-GB" : "ru-RU", { weekday: "long", day: "numeric", month: "long" });
-const utcLabel = () => { const o = -new Date().getTimezoneOffset(); return "UTC" + (o >= 0 ? "+" : "−") + Math.floor(Math.abs(o) / 60) + (Math.abs(o) % 60 ? ":" + String(Math.abs(o) % 60).padStart(2, "0") : ""); };
+const hm = (ms) => new Date(ms).toLocaleTimeString(LANG === "en" ? "en-GB" : "ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: journalTz() });
+const dayTitle = (ms) => new Date(ms).toLocaleDateString(LANG === "en" ? "en-GB" : "ru-RU", { weekday: "long", day: "numeric", month: "long", timeZone: journalTz() });
+const utcLabel = () => tzLabel();
 const left = (ms) => News.fmtLeft(ms, LANG === "en");
 
 function newsLive() {
@@ -1725,8 +1797,8 @@ function tvValues(e) {
   if (e.pair) v.pair = Conn.pairName(e.pair, S.lists.pair);
   if (e.dir) v.dir = e.dir;
   if (e.chartMs != null) {
-    const wall = e.utcMs != null ? e.utcMs - new Date(e.utcMs).getTimezoneOffset() * 60000 : e.chartMs; // время на часах устройства
-    const serial = wall / 864e5 + 25569;
+    // время входа в поясе журнала; если пояс графика не прочитан — считаем, что график в поясе журнала
+    const serial = e.utcMs != null ? msToSerial(e.utcMs) : e.chartMs / 864e5 + 25569;
     v.open = toInput(serial);
     v.session = sessionOf(serial);
   }
@@ -2033,7 +2105,7 @@ function renderChecklist() {
 function runsHistory() {
   const runs = [...S.runs].sort((a, b) => b.at - a.at);
   if (!runs.length) return `<section class="panel"><h3>${tr("История")}</h3><div class="empty">${tr("Сохранённых чек-листов пока нет")}</div></section>`;
-  const today = Math.floor(fromInput(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)));
+  const today = Math.floor(nowSerial());
   const tday = runs.filter((r) => Math.floor(r.at) === today);
   const ok = (list) => list.filter((r) => r.verdict === "Можно торговать").length;
   const bad = (list) => list.filter((r) => r.verdict === "Сделки нет").length;
@@ -2084,7 +2156,7 @@ async function runSave() {
   if (!c.pair && !c.setup && !c.yes.length && !c.no.length) { toast(tr("Чек-лист пустой"), true); return; }
   const v = runVerdict(c);
   const now = new Date();
-  const at = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes()) / 86400000 + 25569;
+  const at = nowSerial();
   const setup = CL.setupById(c.setup);
   const row = [at, c.pair, c.setup, setup?.name || "", v.text, c.yes.join(" "), c.no.join(" "),
     c.no.map((id) => CL.itemText(id)).join("; "), c.note.trim()];
@@ -2261,7 +2333,7 @@ function checklistClick(b) {
     const blank = !c.pair && !c.setup && !c.yes.length && !c.no.length;
     exportRun({
       ...c, setupName: setup?.name || "", verdict: blank ? "" : runVerdict(c).text,
-      at: blank ? null : Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes()) / 86400000 + 25569,
+      at: blank ? null : nowSerial(),
     }, a === "run-png" ? "png" : "pdf");
     return true;
   }
@@ -2570,6 +2642,7 @@ function events() {
   $("#fab").onclick = () => openEditor(null);
   $("#newsBar").onclick = () => setView("news");
   $("#apiBtn").onclick = () => setView("connect");
+  $("#setBtn").onclick = () => setView("settings");
   $("#aiBtn").onclick = () => setView("ai");
   $("#refresh").onclick = () => reload().then((ok) => ok && toast(tr("Обновлено")));
   $("#logout").onclick = () => { if (confirm(tr("Выйти из Google-аккаунта в приложении?"))) { auth.logout(); showLogin(); } };
@@ -2581,6 +2654,7 @@ function events() {
     if (btn && S.view === "news" && newsClick(btn)) return;
     if (btn && S.view === "lot" && lotClick(btn)) return;
     if (btn && S.view === "ai" && aiClick(btn)) return;
+    if (btn && S.view === "settings" && settingsClick(btn)) return;
     if (btn?.dataset.act === "ai-open") { setView("ai"); return; }
     if (btn?.dataset.aiprov) { AI.saveSettings({ ...AI.settings(), provider: btn.dataset.aiprov }); renderConnect(); if (btn.dataset.aiprov === "gemini" && !AI.settings().gmodels.length) aiLoadGeminiModels(); return; }
     if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
@@ -2618,6 +2692,7 @@ function events() {
     if (e.target.dataset.aitv) { AI.saveSettings({ ...AI.settings(), tvread: e.target.checked }); renderConnect(); return; }
     if (e.target.dataset.aion) { AI.saveSettings({ ...AI.settings(), enabled: e.target.checked }); aiBtnSync(); renderConnect(); return; }
     if (e.target.dataset.aif) { AI.saveSettings({ ...AI.settings(), [e.target.dataset.aif]: e.target.value.trim() }); aiBtnSync(); renderConnect(); if (e.target.dataset.aif === "gkey") aiLoadGeminiModels(); return; }
+    if (e.target.dataset.settz != null) { setTz(e.target.value); return; }
     if (e.target.dataset.aidate) { AIV[e.target.dataset.aidate] = e.target.value; renderAI(); return; }
     if (e.target.dataset.nwwin) { newsSet({ window: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) }); return; }
     if (e.target.dataset.nwnotify) {

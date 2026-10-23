@@ -1,5 +1,5 @@
 // Карточка сделки: строка таблицы <-> форма, и какие ячейки изменились.
-import { num, isNum, parseDT, toInput, fromInput, sameMinute, sessionOf, EPOCH_SHIFT } from "./util.js";
+import { num, isNum, parseDT, toInput, fromInput, sameMinute, sessionOf, EPOCH_SHIFT, nowSerial } from "./util.js";
 import { parseCheck, formatCheck, sameCheck, emptyCheck } from "./checklist.js";
 import { LANG } from "./i18n.js";
 
@@ -47,7 +47,7 @@ export function formatScreens(shots, order = []) {
 
 export function emptyForm(now = new Date(), idea = "") {
   // текущее время устройства как «настенное» время
-  const s = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes()) / 86400000 + EPOCH_SHIFT;
+  const s = nowSerial(); // сейчас — в поясе журнала
   return {
     open: toInput(s), close: "", dir: "", pair: "", session: sessionOf(s), sessionAuto: true,
     poi: [], entry: "", result: "", rr: "", risk: "", profit: "",
