@@ -593,4 +593,8 @@ export const EN = {
   "Скрыть": "Hide",
   "Читать скриншоты TradingView в карточке сделки": "Read TradingView screenshots in the trade card",
   "Прикрепляешь скриншот или ссылку TradingView — ИИ читает актив, направление и время входа (по инструменту позиции и шкале времени) и заполняет пару, направление, время, сессию и RR. Каждый скриншот — один запрос к ИИ.": "Attach a TradingView screenshot or link — AI reads the instrument, direction and entry time (from the position tool and the time axis) and fills in pair, direction, time, session and RR. Each screenshot is one AI request.",
+  "Profit считается сам: Win = Risk × RR, Lose = −Risk, BE = 0.": "Profit is calculated: Win = Risk × RR, Lose = −Risk, BE = 0.",
+  "Profit вписан вручную.": "Profit entered manually.",
+  "Считать автоматически": "Calculate automatically",
+  "На реальном счёте Profit берётся из терминала: автоперенос MT5 на компьютере или раздел API.": "On the live account Profit comes from the terminal: MT5 auto-sync on the computer or the API section.",
 };

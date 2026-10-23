@@ -580,6 +580,27 @@ function saveDraft() {
 }
 const clearDraft = () => lsDel("tj.draft");
 
+// Бэктест: Profit считается из риска и результата — Win = Risk × RR, Lose = −Risk, BE = 0.
+function btProfit(f) {
+  const risk = num(f.risk), rr = num(f.rr);
+  if (!(risk > 0)) return null;
+  if (f.result === "Lose") return String(-risk);
+  if (f.result === "BE") return "0";
+  if (f.result === "Win" && rr > 0) return String(Math.round(risk * rr * 100) / 100);
+  return null;
+}
+function btAutoProfit() {
+  const ed = S.ed;
+  if (!ed || ed.mode !== "bt" || ed.profitManual) return;
+  const p = btProfit(ed.form);
+  if (p == null) return;
+  ed.form.profit = p;
+  const inp = $('#editor [data-k="profit"]');
+  if (inp && document.activeElement !== inp) inp.value = p.replace(".", ",");
+  const r = num(ed.form.profit) / num(ed.form.risk);
+  const h = $("#rHint"); if (h && Number.isFinite(r)) h.textContent = tr("Итог в R: {r}", { r: fmtSigned(r) });
+}
+
 function openEditor(n, form = null) {
   const t = n ? trades().find((x) => x.n === n) : null;
   if (n && !t) { toast(tr("Сделка не найдена — таблица изменилась"), true); return; }
@@ -587,6 +608,17 @@ function openEditor(n, form = null) {
     mode: S.mode, n: t ? t.n : null, key: t ? { open: t.v[0], pair: t.v[3] } : null,
     form: form || toForm(t, isBT() ? activeIdea() : ""), uploading: {}, activeTf: "H4", manage: null,
   };
+  if (isBT()) {
+    const f = S.ed.form;
+    // новая сделка бэктеста — тот же риск, что в прошлой
+    if (!t && !form && !String(f.risk).trim()) {
+      const last = [...trades("bt")].sort((a, b) => parseDT(b.v[0]) - parseDT(a.v[0])).find((x) => num(x.v[9]) > 0);
+      if (last) f.risk = fmtNum(num(last.v[9]));
+    }
+    // свой Profit, который не совпадает с расчётом, не трогаем
+    const calc = btProfit(f);
+    S.ed.profitManual = !!(t && String(f.profit).trim() && calc != null && Math.abs(num(f.profit) - num(calc)) > 0.005);
+  }
   $("#editor").hidden = false;
   document.body.classList.add("modal-open");
   renderEditor();
@@ -696,6 +728,9 @@ function renderEditor() {
           <label>Risk, %<input inputmode="decimal" data-k="risk" value="${esc(f.risk)}"></label>
           <label>Profit, %<input inputmode="decimal" data-k="profit" value="${esc(f.profit)}"></label>
         </div>
+        ${bt ? `<div class="hint pf-note"><span class="bt-auto" ${S.ed.profitManual ? "hidden" : ""}>${tr("Profit считается сам: Win = Risk × RR, Lose = −Risk, BE = 0.")}</span>
+          <span class="bt-manual" ${S.ed.profitManual ? "" : "hidden"}>${tr("Profit вписан вручную.")} <button type="button" class="link-btn" data-act="bt-auto">${tr("Считать автоматически")}</button></span></div>`
+        : `<div class="hint pf-note">${tr("На реальном счёте Profit берётся из терминала: автоперенос MT5 на компьютере или раздел API.")}</div>`}
         <div class="hint" id="rHint">${Number.isFinite(r) ? tr("Итог в R: {r}", { r: fmtSigned(r) }) : bt ? tr("Совет: в бэктесте ставь одинаковый Risk (например 0,5), тогда идеи честно сравниваются в R.") : ""}</div>
         ${shotsBlock()}
         <label>Exit<input data-k="exit" value="${esc(f.exit)}"></label>
@@ -2406,6 +2441,7 @@ function editorEvents() {
     const f = S.ed.form;
     if (b.dataset.act === "cancel") { if (confirm(tr("Закрыть без сохранения?"))) { clearDraft(); closeEditor(); } return; }
     if (tvClick(b)) return;
+    if (b.dataset.act === "bt-auto") { S.ed.profitManual = false; btAutoProfit(); return renderEditor(); }
     if (b.dataset.act === "save") return saveEditor();
     if (b.dataset.act === "delete") return deleteTrade();
     if (b.dataset.pick === "poi") { const p = b.dataset.val; f.poi = f.poi.includes(p) ? f.poi.filter((x) => x !== p) : [...f.poi, p]; return renderEditor(); }
@@ -2421,7 +2457,7 @@ function editorEvents() {
       return updateList(kind, S.lists[kind].filter((x) => x !== val));
     }
     const sg = b.closest("[data-seg]");
-    if (sg) { const k = sg.dataset.seg; (S.ed.touched ||= {})[k] = true; f[k] = f[k] === b.dataset.val ? "" : b.dataset.val; return renderEditor(); }
+    if (sg) { const k = sg.dataset.seg; (S.ed.touched ||= {})[k] = true; f[k] = f[k] === b.dataset.val ? "" : b.dataset.val; if (k === "result") btAutoProfit(); return renderEditor(); }
     if (b.dataset.del) { f.shots[rowTf(b)]?.splice(+b.dataset.del, 1); return renderEditor(); }
     if (b.dataset.img) return openViewer(b.dataset.img);
   });
@@ -2437,6 +2473,8 @@ function editorEvents() {
       const s = $('select[data-k="session"]', el);
       if (s) { if (![...s.options].some((o) => o.value === f.session)) s.add(new Option(f.session)); s.value = f.session; }
     }
+    if (k === "profit" && S.ed.mode === "bt") { S.ed.profitManual = String(e.target.value).trim() !== ""; const a = $("#editor .bt-auto"); if (a) a.hidden = S.ed.profitManual; const m = $("#editor .bt-manual"); if (m) m.hidden = !S.ed.profitManual; }
+    if (["risk", "rr"].includes(k)) btAutoProfit();
     if (["risk", "profit"].includes(k)) {
       const r = num(f.profit) / num(f.risk);
       $("#rHint").textContent = Number.isFinite(r) ? tr("Итог в R: {r}", { r: fmtSigned(r) }) : "";
