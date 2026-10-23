@@ -1,5 +1,5 @@
-// Экономический календарь (Forex Factory). Данные — calendar.json рядом с приложением: его раз в час
-// обновляет GitHub Actions (scripts/ff_calendar.py). Здесь: загрузка, фильтр, «опасное окно» вокруг новостей.
+// Экономический календарь (Forex Factory + факт TradingView). Данные — calendar.json рядом с приложением: его каждые
+// 10 минут обновляет GitHub Actions (scripts/ff_calendar.py). Здесь: загрузка, фильтр, «опасное окно» вокруг новостей.
 import { lsGet, lsSet, msToSerial, serialToMs } from "./util.js";
 
 export const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF", "CNY", "All"];
@@ -23,6 +23,12 @@ export function setFilter(json) {
 setFilter(lsGet("tj.news")); // до загрузки таблицы — последний фильтр с этого устройства
 
 export const data = () => DATA;
+const MULT = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
+export function num(s) {
+  const t = String(s || "").replace(/[%,\s]/g, "");
+  const m = t.match(/^([^0-9.-]*)(-?[0-9]*\.?[0-9]+)([KMBT]?)/i);
+  return m ? parseFloat(m[2]) * (MULT[m[3].toUpperCase()] || 1) : null;
+}
 export const loadedAt = () => loadedAt_;
 export async function load(force = false) {
   if (!force && Date.now() - loadedAt_ < 4 * 60e3 && DATA.events.length) return DATA;

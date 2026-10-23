@@ -1277,6 +1277,15 @@ const hm = (ms) => new Date(ms).toLocaleTimeString(LANG === "en" ? "en-GB" : "ru
 const dayTitle = (ms) => new Date(ms).toLocaleDateString(LANG === "en" ? "en-GB" : "ru-RU", { weekday: "long", day: "numeric", month: "long", timeZone: journalTz() });
 const utcLabel = () => tzLabel();
 const left = (ms) => News.fmtLeft(ms, LANG === "en");
+// Факт против прогноза: выше / ниже / как ждали (без оценки «хорошо/плохо» — для разных данных это разное).
+function actualHtml(e, withF = false) {
+  if (!e.actual) return "";
+  const a = News.num(e.actual), f = News.num(e.forecast);
+  const d = a == null || f == null ? "" : a > f ? "up" : a < f ? "dn" : "eq";
+  const ar = d === "up" ? "▲" : d === "dn" ? "▼" : "";
+  return `<span class="nw-act ${d}" title="${d ? tr(d === "up" ? "Выше прогноза" : d === "dn" ? "Ниже прогноза" : "Как прогноз") : ""}">${esc(e.actual)}${ar ? ` <i>${ar}</i>` : ""}</span>`
+    + (withF && e.forecast ? ` <span class="muted">(${tr("прогноз")} ${esc(e.forecast)})</span>` : "");
+}
 
 function newsLive() {
   const now = Date.now(), dz = News.danger(now), f = News.filter();
@@ -1287,7 +1296,7 @@ function newsLive() {
     return `<div class="nw-live danger"><div class="nw-live-ico">⚠</div><div>
       <div class="nw-live-h">${before ? tr("Через {t} — сильная новость. Сделки не открывать", { t: `<span data-cd="${e.ms}">${left(e.ms - now)}</span>` })
         : tr("Сильная новость вышла {t} назад. Подожди до {h}", { t: `<span data-cd="${e.ms}">${left(now - e.ms)}</span>`, h: hm(e.ms + dz.window) })}</div>
-      <div>${dz.active.map(ev).join("<br>")} · ${hm(e.ms)}</div>
+      <div>${dz.active.map((x) => ev(x) + (x.actual ? ` — ${tr("факт")} ${actualHtml(x, true)}` : "")).join("<br>")} · ${hm(e.ms)}</div>
       <div class="muted">${tr("Опасное окно: {n} мин до и после сильной новости. Открытые позиции — закрыть или в безубыток.", { n: f.window })}</div></div></div>`;
   }
   if (dz.next) {
@@ -1316,20 +1325,22 @@ function renderNews() {
     const cls = ["nw-row", "imp-" + e.impact.toLowerCase(), past ? "past" : "", hot.has(e.id) ? "hot" : "", e.id === nextId ? "next" : ""].join(" ");
     const status = hot.has(e.id) ? `<span class="nw-badge hot">${tr("опасно")}</span>`
       : e.id === nextId ? `<span class="nw-badge next">${tr("через {t}", { t: `<span data-cd="${e.ms}">${left(e.ms - now)}</span>` })}</span>`
-      : past ? `<a class="nw-badge done" href="${esc(e.url)}" target="_blank" rel="noopener" title="${tr("Фактическое значение — на сайте Forex Factory")}">${tr("вышла")} ↗</a>` : "";
+      : past && !e.actual ? `<a class="nw-badge done" href="${esc(e.url)}" target="_blank" rel="noopener" title="${tr("Факта пока нет — открыть событие на сайте")}">${tr("вышла")} ↗</a>` : "";
+    const src = e.src === "tv" ? ` <span class="nw-badge src" title="${tr("Этого события нет у Forex Factory — взято из TradingView")}">TV</span>` : "";
     return head + `<div class="${cls}">
       <div class="nw-time">${e.exact ? hm(e.ms) : esc(e.label || tr("весь день"))}</div>
       <div class="nw-cur">${esc(e.cur)}</div>
       <div class="nw-imp" title="${tr(IMP_RU[e.impact] || e.impact)} · ${tr(News.TYPE_RU[News.typeOf(e)])}"><span class="imp-dot"></span><span class="imp-txt">${tr(IMP_RU[e.impact] || e.impact)}</span></div>
-      <div class="nw-title"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a> ${status}</div>
-      <div class="nw-num"><span class="nw-k">${tr("Прогноз")}</span>${esc(e.forecast || "—")}</div>
-      <div class="nw-num"><span class="nw-k">${tr("Пред.")}</span>${esc(e.previous || "—")}</div>
+      <div class="nw-title"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>${src} ${status}</div>
+      <div class="nw-num nw-na"><span class="nw-k">${tr("Факт")}</span>${actualHtml(e) || "—"}</div>
+      <div class="nw-num nw-nf"><span class="nw-k">${tr("Прогноз")}</span>${esc(e.forecast || "—")}</div>
+      <div class="nw-num nw-np"><span class="nw-k">${tr("Пред.")}</span>${esc(e.previous || "—")}</div>
     </div>`;
   }).join("");
   const chip = (on, attr, label, cls = "") => `<button type="button" class="chip ${cls} ${on ? "on" : ""}" ${attr}>${label}</button>`;
-  const fetched = D.fetched ? new Date(D.fetched) : null;
+  const fetched = D.fetched ? new Date(D.fetched) : null, tvAt = D.tvFetched ? new Date(D.tvFetched) : null;
   $("#view").innerHTML = `<div class="nw-page">
-    <div class="nw-head"><h2>${tr("Новости")}</h2><span class="muted">${tr("Экономический календарь Forex Factory · время {tz}", { tz: utcLabel() })}</span></div>
+    <div class="nw-head"><h2>${tr("Новости")}</h2><span class="muted">${tr("Экономический календарь Forex Factory + TradingView · время {tz}", { tz: utcLabel() })}</span></div>
     <div id="nwLive">${newsLive()}</div>
     ${newsErr ? `<div class="panel cx-msg">${esc(newsErr)}</div>` : ""}
     <section class="panel nw-filters">
@@ -1361,10 +1372,10 @@ function renderNews() {
       </div>
     </section>
     <section class="panel nw-list">
-      <div class="nw-row nw-thead"><div>${tr("Время")}</div><div>${tr("Валюта")}</div><div>${tr("Влияние")}</div><div>${tr("Событие")}</div><div>${tr("Прогноз")}</div><div>${tr("Пред.")}</div></div>
+      <div class="nw-row nw-thead"><div>${tr("Время")}</div><div>${tr("Валюта")}</div><div>${tr("Влияние")}</div><div>${tr("Событие")}</div><div>${tr("Факт")}</div><div>${tr("Прогноз")}</div><div>${tr("Пред.")}</div></div>
       ${rows || `<div class="empty">${D.events.length ? tr("По этому фильтру новостей нет") : tr("Календарь загружается…")}</div>`}
     </section>
-    <div class="hint nw-foot">${tr("Источник: Forex Factory. Выгрузка обновляется раз в час (так требует Forex Factory){t}. Фактические значения в выгрузке нет — после выхода новости нажми «вышла ↗», откроется событие на сайте.", { t: fetched ? tr(", последняя — в {h}", { h: hm(fetched.getTime()) }) : "" })} ${News.loadedAt() ? tr("Приложение проверило в {h}.", { h: hm(News.loadedAt()) }) : ""}</div>
+    <div class="hint nw-foot">${tr("Список и важность — Forex Factory (обновляется раз в час{t}). Факт, а также события, которых нет у Forex Factory (метка TV), — TradingView: сервер проверяет его каждые 10 минут{v}, поэтому факт появляется через 5–20 минут после выхода новости. ▲/▼ — факт выше или ниже прогноза.", { t: fetched ? tr(", последняя — в {h}", { h: hm(fetched.getTime()) }) : "", v: tvAt ? tr(", последняя проверка — в {h}", { h: hm(tvAt.getTime()) }) : "" })} ${News.loadedAt() ? tr("Приложение проверило в {h}.", { h: hm(News.loadedAt()) }) : ""}</div>
   </div>`;
 }
 

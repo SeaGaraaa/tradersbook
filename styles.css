@@ -610,7 +610,7 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .nw-row { grid-template-columns: 50px 42px 1fr; grid-template-areas: "time cur imp" "title title title" "f p p"; gap: 4px 8px; padding: 10px 12px; }
   .nw-time { grid-area: time; } .nw-cur { grid-area: cur; } .nw-imp { grid-area: imp; justify-content: flex-end; }
   .nw-title { grid-area: title; } .nw-num { text-align: left; font-size: 13px; }
-  .nw-num:nth-of-type(5) { grid-area: f; } .nw-num:nth-of-type(6) { grid-area: p; white-space: nowrap; }
+  .nw-num { min-width: 0; }
   .nw-k { display: inline; color: var(--muted); margin-right: 5px; font-size: 12px; }
   .nw-flabel { width: 100%; }
   .nw-live-h { font-size: 15px; }
@@ -1001,3 +1001,20 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .set-link > span:first-child { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .set-link small { font-size: 12.5px; line-height: 1.4; }
 .set-arrow { font-size: 22px; color: var(--muted); }
+
+/* Новости: факт из TradingView */
+.nw-row { grid-template-columns: 64px 48px 104px 1fr 84px 84px 84px; }
+@media (min-width: 721px) { .nw-row { grid-template-columns: 64px 70px 104px 1fr 84px 84px 84px; } }
+.nw-act { font-weight: 700; color: var(--text); white-space: nowrap; }
+.nw-act i { font-style: normal; font-size: 10px; color: var(--muted); vertical-align: 1px; }
+.nw-act.up i { color: var(--accent); }
+.nw-act.dn i { color: var(--imp-high); }
+.nw-row.past .nw-act { opacity: 1; }
+.nw-row.past:has(.nw-act) { opacity: .8; }
+.nw-badge.src { border: 1px solid var(--line); color: var(--muted); font-weight: 600; font-size: 10px; padding: 0 5px; }
+.nw-live .nw-act { color: inherit; }
+@media (max-width: 720px) {
+  .nw-row, .nw-row.nw-thead { grid-template-columns: minmax(50px, max-content) minmax(70px, max-content) 1fr; column-gap: 14px; grid-template-areas: "time cur imp" "title title title" "a f p"; }
+  .nw-num.nw-na { grid-area: a; } .nw-num.nw-nf { grid-area: f; } .nw-num.nw-np { grid-area: p; }
+  .nw-num { white-space: nowrap; line-height: 1.25; } .nw-num .nw-k { display: block; margin: 0 0 1px; font-size: 11px; }
+}
