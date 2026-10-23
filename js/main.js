@@ -601,6 +601,30 @@ function btAutoProfit() {
   const h = $("#rHint"); if (h && Number.isFinite(r)) h.textContent = tr("Итог в R: {r}", { r: fmtSigned(r) });
 }
 
+// Сессия по времени входа (Asia / Frankfurt / London / NY), если её не выбрали руками.
+const autoSession = (f) => { const s = fromInput(f.open); return s === "" ? "" : sessionOf(s); };
+function sessionNoteHtml() {
+  const f = S.ed?.form;
+  if (!f) return "";
+  const a = autoSession(f);
+  if (!a) return "";
+  return f.sessionAuto || f.session === a
+    ? `<span class="muted">${tr("авто — по времени входа")}</span>`
+    : `<span class="muted">${tr("по времени входа: {s}", { s: a })}</span> <button type="button" class="link-btn" data-act="sess-auto">${tr("подставить")}</button>`;
+}
+function sessionNote() { const n = $("#editor .sess-note"); if (n) n.innerHTML = sessionNoteHtml(); }
+function applyAutoSession() {
+  const f = S.ed?.form;
+  if (!f) return;
+  const a = autoSession(f);
+  if (f.sessionAuto && a) {
+    f.session = a;
+    const s = $('#editor select[data-k="session"]');
+    if (s) { if (![...s.options].some((o) => o.value === a)) s.add(new Option(a)); s.value = a; }
+  }
+  sessionNote();
+}
+
 function openEditor(n, form = null) {
   const t = n ? trades().find((x) => x.n === n) : null;
   if (n && !t) { toast(tr("Сделка не найдена — таблица изменилась"), true); return; }
@@ -719,7 +743,7 @@ function renderEditor() {
         ${listField("pair", "Pair", S.lists.pair, f.pair ? [f.pair] : [])}
         <label>Direction${seg("dir", ["Long", "Short"], f.dir)}</label>
         <div class="row2">
-          <label>Session${sel("session", S.lists.session)}</label>
+          <label>Session${sel("session", S.lists.session)}<span class="sess-note">${sessionNoteHtml()}</span></label>
           <label>Result${seg("result", DEF.result, f.result)}</label>
         </div>
         ${listField("poi", "POI", S.lists.poi, f.poi)}
@@ -2442,6 +2466,7 @@ function editorEvents() {
     const f = S.ed.form;
     if (b.dataset.act === "cancel") { if (confirm(tr("Закрыть без сохранения?"))) { clearDraft(); closeEditor(); } return; }
     if (tvClick(b)) return;
+    if (b.dataset.act === "sess-auto") { S.ed.form.sessionAuto = true; applyAutoSession(); return; }
     if (b.dataset.act === "bt-auto") { S.ed.profitManual = false; btAutoProfit(); return renderEditor(); }
     if (b.dataset.act === "save") return saveEditor();
     if (b.dataset.act === "delete") return deleteTrade();
@@ -2468,12 +2493,8 @@ function editorEvents() {
     const f = S.ed.form;
     (S.ed.touched ||= {})[k] = true;
     f[k] = e.target.value;
-    if (k === "session") f.sessionAuto = false;
-    if (k === "open" && f.sessionAuto && fromInput(f.open) !== "") {
-      f.session = sessionOf(fromInput(f.open));
-      const s = $('select[data-k="session"]', el);
-      if (s) { if (![...s.options].some((o) => o.value === f.session)) s.add(new Option(f.session)); s.value = f.session; }
-    }
+    if (k === "session") { f.sessionAuto = f.session === autoSession(f); sessionNote(); }
+    if (k === "open") applyAutoSession();
     if (k === "profit") { S.ed.profitManual = String(e.target.value).trim() !== ""; const a = $("#editor .bt-auto"); if (a) a.hidden = S.ed.profitManual; const m = $("#editor .bt-manual"); if (m) m.hidden = !S.ed.profitManual; }
     if (["risk", "rr"].includes(k)) btAutoProfit();
     if (["risk", "profit"].includes(k)) {
@@ -2483,6 +2504,8 @@ function editorEvents() {
   });
   el.addEventListener("change", (e) => {
     if (!S.ed) return;
+    // iPhone сообщает о выборе даты/времени только событием change
+    if (e.target.dataset.k === "open") { S.ed.form.open = e.target.value; applyAutoSession(); }
     if (e.target.dataset.link) addLink(rowTf(e.target), e.target.value);
     if (e.target.dataset.file) { const file = e.target.files?.[0]; if (file) uploadTo(rowTf(e.target), file); }
   });

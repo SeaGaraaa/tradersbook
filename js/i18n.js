@@ -598,4 +598,7 @@ export const EN = {
   "Считать автоматически": "Calculate automatically",
   "На реальном счёте Profit берётся из терминала: автоперенос MT5 на компьютере или раздел API.": "On the live account Profit comes from the terminal: MT5 auto-sync on the computer or the API section.",
   "Если сделка есть в MT5, автосинхронизация заменит его точным значением из терминала.": "If the trade is in MT5, auto-sync will replace it with the exact value from the terminal.",
+  "авто — по времени входа": "auto — from entry time",
+  "по времени входа: {s}": "from entry time: {s}",
+  "подставить": "use it",
 };

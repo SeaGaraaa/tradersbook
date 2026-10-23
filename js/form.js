@@ -65,7 +65,8 @@ export function toForm(t, idea = "") {
   }
   return {
     open: toInput(t.v[0]), close: toInput(t.v[1]), dir: String(t.v[2] ?? ""), pair: String(t.v[3] ?? ""),
-    session: String(t.v[4] ?? ""), sessionAuto: !t.v[4],
+    // сессия «авто», если пустая или совпадает с той, что выходит по времени входа — тогда при смене времени она пересчитается
+    session: String(t.v[4] ?? ""), sessionAuto: !t.v[4] || (isNum(parseDT(t.v[0])) && sessionOf(parseDT(t.v[0])) === String(t.v[4]).trim()),
     poi: normPoi(t.v[5]).split(", ").filter(Boolean),
     entry: String(t.v[6] ?? ""), result: res(t), rr: n(t.v[8]), risk: n(t.v[9]), profit: n(t.v[10]),
     shots, exit: String(t.v[18] ?? ""), notes: String(t.v[19] ?? ""), idea: String(t.v[IDEA] ?? "").trim(),
