@@ -113,6 +113,9 @@ body.bt { --accent: #a855f7; --on-accent: #ffffff; }
 .grid td.c-idea { max-width: 180px; color: var(--accent); font-weight: 600; }
 .ana-scroll { overflow-x: auto; }
 table.ideas tr.pick { cursor: pointer; }
+.idea-cell { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 260px; }
+.idea-cell .few { margin-left: 0; }
+.kpi-note { font-size: 12px; font-weight: 600; color: var(--muted); }
 table.ideas tr.pick:hover td { background: var(--panel2); }
 table.ideas tr.sel td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .few { font-size: 11px; font-weight: 600; color: #f59e0b; border: 1px solid color-mix(in srgb, #f59e0b 45%, transparent); border-radius: 999px; padding: 1px 7px; margin-left: 6px; white-space: nowrap; }

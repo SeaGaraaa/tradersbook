@@ -61,6 +61,8 @@ export const EN = {
   "Пока нет сделок бэктеста с результатом": "No backtest trades with a result yet",
   "— по Expectancy (R), лучшая сверху; нажми на идею, чтобы открыть её статистику ниже": "— by Expectancy (R), best first; tap an idea to see its stats below",
   "без идеи": "no idea",
+  "нет стопов": "no losses",
+  "У этой идеи нет стопов": "This idea has no losing trades",
   "мало данных": "small sample",
   "Меньше {n} сделок — вывод делать рано": "Fewer than {n} trades — too early to conclude",
   "R считается по сделкам, где заполнен Risk. «Мало данных» — меньше {n} сделок: разница между идеями может быть случайной.": "R is counted for trades with Risk filled in. “Small sample” — fewer than {n} trades: differences between ideas may be random.",

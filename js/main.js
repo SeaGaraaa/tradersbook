@@ -497,11 +497,11 @@ function ideasTable() {
         <th class="r">Profit Factor</th><th class="r">AVG RR</th><th class="r">Profit</th><th class="r">Max DD</th></tr></thead>
       <tbody>${rows.map(({ name, k }) => `
         <tr class="pick ${sel != null && sel === name ? "sel" : ""}" data-idea="${esc(name)}">
-          <td>${name ? esc(name) : `<span class="muted">${tr("без идеи")}</span>`}${k.total < MIN_SAMPLE ? ` <span class="few" title="${tr("Меньше {n} сделок — вывод делать рано", { n: MIN_SAMPLE })}">${tr("мало данных")}</span>` : ""}</td>
+          <td><div class="idea-cell"><span>${name ? esc(name) : `<span class="muted">${tr("без идеи")}</span>`}</span>${k.total < MIN_SAMPLE ? `<span class="few" title="${tr("Меньше {n} сделок — вывод делать рано", { n: MIN_SAMPLE })}">${tr("мало данных")}</span>` : ""}</div></td>
           <td class="r">${k.total}</td><td class="r">${fmtPct(k.winrate)}</td>
           <td class="r"><b class="${sgn(k.expectancy)}">${fmtSigned(k.expectancy)}</b></td>
           <td class="r ${sgn(k.totalR)}">${fmtSigned(k.totalR)}</td>
-          <td class="r">${k.pf == null ? "No Losses" : fmtNum(k.pf)}</td><td class="r">${fmtNum(k.avgRR)}</td>
+          <td class="r">${k.pf == null ? `<span title="${tr("У этой идеи нет стопов")}">∞</span>` : fmtNum(k.pf)}</td><td class="r">${fmtNum(k.avgRR)}</td>
           <td class="r ${sgn(k.profit)}">${fmtSigned(k.profit)}%</td><td class="r">${fmtNum(k.maxDD)}%</td>
         </tr>`).join("")}</tbody></table></div>
     <div class="idea-cards">${rows.map(({ name, k }) => `
@@ -512,7 +512,7 @@ function ideasTable() {
           <div><span>Σ R</span><b class="${sgn(k.totalR)}">${fmtSigned(k.totalR)}</b></div>
           <div><span>WinRate</span><b>${fmtPct(k.winrate)}</b></div>
           <div><span>Trades</span><b>${k.total}</b></div>
-          <div><span>PF</span><b>${k.pf == null ? "—" : fmtNum(k.pf)}</b></div>
+          <div><span>PF</span><b>${k.pf == null ? (k.total ? "∞" : "—") : fmtNum(k.pf)}</b></div>
           <div><span>Max DD</span><b>${fmtNum(k.maxDD)}%</b></div>
         </div>
       </div>`).join("")}</div>
@@ -532,7 +532,7 @@ function renderDashboard() {
       ${kp("Total Trades", k.total)}
       ${kp("WinRate", fmtPct(k.winrate))}
       ${kp("AVG RR", fmtNum(k.avgRR))}
-      ${kp("Profit Factor", k.pf == null ? (k.total ? "No Losses" : "—") : fmtNum(k.pf))}
+      ${kp("Profit Factor", k.pf == null ? (k.total ? `∞ <span class="kpi-note">${tr("нет стопов")}</span>` : "—") : fmtNum(k.pf))}
       ${kp("Expectancy (R)", fmtSigned(k.expectancy), sgn(k.expectancy))}
       ${isBT() ? kp("Σ R", fmtSigned(k.totalR), sgn(k.totalR)) : kp("Duration", fmtDuration(k.duration))}
       ${kp("Max Drawdown", fmtNum(k.maxDD) + "%", k.maxDD > 0 ? "neg" : "")}
