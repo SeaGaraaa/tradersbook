@@ -1,6 +1,6 @@
 // Работа с Google Sheets и Google Drive через REST API.
 import { CONFIG } from "../config.js";
-import { token, forget } from "./auth.js";
+import { token, forget, setHint } from "./auth.js";
 import { lsGet, lsSet, lsDel, parseDT } from "./util.js";
 import { headersFor } from "./form.js";
 
@@ -331,6 +331,7 @@ async function accountHash() {
   const r = await json(`${DRIVE.replace(/\/files$/, "")}/about?fields=user(emailAddress)`);
   const email = String(r.user?.emailAddress || "").trim().toLowerCase();
   if (!email) throw new Error("Не удалось определить аккаунт Google");
+  setHint(email);
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

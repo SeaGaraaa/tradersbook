@@ -649,4 +649,5 @@ export const EN = {
   "Список и важность — Forex Factory (обновляется раз в час{t}). Факт, а также события, которых нет у Forex Factory (метка TV), — TradingView: сервер проверяет его каждые 10 минут{v}, поэтому факт появляется через 5–20 минут после выхода новости. ▲/▼ — факт выше или ниже прогноза.": "Events and impact — Forex Factory (updated hourly{t}). Actual values and events missing on Forex Factory (TV tag) — TradingView: the server checks it every 10 minutes{v}, so the actual appears 5–20 minutes after release. ▲/▼ — actual above or below forecast.",
   "7 дней": "7 days",
   "След. неделя": "Next week",
+  "Вход продлён — сохраняю сделку": "Session renewed — saving the trade",
 };

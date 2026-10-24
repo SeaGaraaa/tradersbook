@@ -7,6 +7,8 @@ export const SCOPE_SHEETS = "https://www.googleapis.com/auth/spreadsheets";
 export const SCOPE_DRIVE = "https://www.googleapis.com/auth/drive.file";
 const KEY = "tj.token";
 const STATE = "tj.state";
+const HINT = "tj.hint"; // адрес аккаунта — чтобы Google продлил вход без выбора аккаунта
+const SILENT = "tj.silentAt"; // когда последний раз продлевали вход без экрана
 
 export function redirectUri() {
   return location.origin + location.pathname.replace(/index\.html$/, "");
@@ -20,7 +22,8 @@ export function handleRedirect() {
   history.replaceState(null, "", location.pathname + location.search);
   const expected = lsGet(STATE);
   lsDel(STATE);
-  if (p.get("error")) return { error: p.get("error") };
+  const silent = expected?.startsWith("s:");
+  if (p.get("error")) return { error: p.get("error"), silent };
   if (!expected || p.get("state") !== expected) return { error: "state mismatch" };
   const tok = {
     value: p.get("access_token"),
@@ -43,9 +46,15 @@ function current() {
 export const token = () => current()?.value || null;
 export const hasDrive = () => (current()?.scope || "").includes(SCOPE_DRIVE);
 export const forget = () => lsDel(KEY);
+export const expiresIn = () => { try { return (JSON.parse(lsGet(KEY) || "null")?.exp || 0) - Date.now(); } catch { return 0; } };
+export const setHint = (email) => email && lsSet(HINT, email);
+// Продлить вход можно, если на устройстве уже входили и последняя попытка была не только что (без петли).
+export const canSilent = () => !!lsGet(HINT) && Date.now() - Number(lsGet(SILENT) || 0) > 120000;
 
-export function login() {
-  const state = crypto.randomUUID();
+// silent: продление входа без экрана Google (prompt=none) — Google сразу возвращает новый токен,
+// если аккаунт на устройстве не вышел из Google. Иначе вернёт ошибку, и приложение покажет обычный вход.
+export function login({ silent = false } = {}) {
+  const state = (silent ? "s:" : "") + crypto.randomUUID();
   lsSet(STATE, state);
   const q = new URLSearchParams({
     client_id: CONFIG.clientId,
@@ -55,11 +64,16 @@ export function login() {
     include_granted_scopes: "true",
     state,
   });
+  if (silent) {
+    lsSet(SILENT, String(Date.now()));
+    q.set("prompt", "none");
+    if (lsGet(HINT)) q.set("login_hint", lsGet(HINT));
+  }
   location.assign("https://accounts.google.com/o/oauth2/v2/auth?" + q);
 }
 
 // Выход: забыть токен и всё, что на этом устройстве относится к пользователю (таблица, черновики, папка Drive).
-const USER_KEYS = ["tj.sheet", "tj.folder", "tj.draft", "tj.clrun", "tj.btIdea"];
+const USER_KEYS = ["tj.sheet", "tj.folder", "tj.draft", "tj.clrun", "tj.btIdea", HINT, SILENT, "tj.autosave"];
 export function logout() {
   const t = token();
   forget();

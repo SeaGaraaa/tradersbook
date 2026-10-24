@@ -145,6 +145,12 @@ function handleErr(e) {
   console.error(e);
   if (e instanceof api.AuthError) {
     if (S.ed) saveDraft();
+    // вход истёк (Google даёт его на час) — продлить без экрана входа; нажатый Save доделается после возврата
+    if (auth.canSilent()) {
+      if (S.ed && S.saving) lsSet("tj.autosave", "1");
+      auth.login({ silent: true });
+      return;
+    }
     showLogin(tr("Сессия Google истекла. Войди ещё раз — несохранённые изменения восстановятся."));
   } else {
     toast(tr("Ошибка: {e}", { e: e.message || e }), true);
@@ -2753,8 +2759,12 @@ function events() {
 async function boot() {
   if (!CONFIG.clientId) return showSetup();
   const r = auth.handleRedirect();
-  if (r?.error) toast(tr("Вход не выполнен: {e}", { e: r.error }), true);
-  if (!auth.token()) return showLogin();
+  if (r?.error && !r.silent) toast(tr("Вход не выполнен: {e}", { e: r.error }), true);
+  if (!auth.token()) {
+    if (!r && auth.canSilent()) return auth.login({ silent: true }); // вход истёк, пока приложение было закрыто
+    lsDel("tj.autosave");
+    return showLogin(lsGet("tj.draft") ? tr("Сессия Google истекла. Войди ещё раз — несохранённые изменения восстановятся.") : "");
+  }
   showApp();
   newsStart();
   S.run = loadRun();
@@ -2778,15 +2788,22 @@ async function boot() {
   if (d?.form && !d.form.shots) { clearDraft(); d = null; } // черновик старой версии приложения
   if (d?.form) {
     if (d.mode && d.mode !== S.mode) { S.mode = d.mode; render(); }
-    let n = null;
-    if (d.key) {
-      const t = findByKey(trades(), d.key);
-      if (!t) { clearDraft(); return; }
-      n = t.n;
+    const t = d.key ? findByKey(trades(), d.key) : null;
+    if (d.key && !t) clearDraft();
+    else {
+      openEditor(t ? t.n : null, d.form);
+      if (lsGet("tj.autosave")) { lsDel("tj.autosave"); toast(tr("Вход продлён — сохраняю сделку")); saveEditor(); }
+      else toast(tr("Восстановил несохранённые изменения"));
     }
-    openEditor(n, d.form);
-    toast(tr("Восстановил несохранённые изменения"));
   }
+  lsDel("tj.autosave");
+  // вернулся в приложение, а до конца входа меньше 10 минут — продлить заранее (карточка сохранится как черновик)
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || S.saving || auth.expiresIn() > 600000 || !auth.canSilent()) return;
+    if (S.ed && Object.values(S.ed.uploading || {}).some((x) => x > 0)) return;
+    if (S.ed) saveDraft();
+    auth.login({ silent: true });
+  });
   if ("serviceWorker" in navigator) {
     const hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
