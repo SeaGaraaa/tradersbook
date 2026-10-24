@@ -384,7 +384,7 @@ function renderList() {
   const table = `
     <div class="table-wrap"><table class="grid">
       <thead><tr>
-        <th class="r c-num">#</th><th>Open</th><th>Close</th>${bt ? "<th>Idea</th>" : ""}<th>Dir</th><th>Pair</th><th>Session</th><th>POI</th><th>Entry</th>
+        <th class="r c-num">#</th><th>Open</th><th>Close</th>${bt ? "<th>Idea</th>" : ""}<th>Direction</th><th>Pair</th><th>Session</th><th>POI</th><th>Entry</th>
         <th>Result</th><th class="r">RR</th><th class="r">Risk</th><th class="r">Profit</th>
       </tr></thead>
       <tbody>${desc.map((t) => `

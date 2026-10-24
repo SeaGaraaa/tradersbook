@@ -145,7 +145,7 @@ textarea { resize: vertical; }
 /* таблица (компьютер) */
 .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); max-height: calc(100vh - 190px); }
 table.grid { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
-.grid th { position: sticky; top: 0; background: var(--panel2); text-align: left; font-weight: 600; color: var(--muted); padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 1; }
+.grid th { position: sticky; top: 0; background: var(--panel2); text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 10px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 1; }
 /* все строки одной высоты: текст в одну строку, лишнее обрезается «…», полный текст — в подсказке и в карточке */
 .grid td {
   padding: 0 10px; height: 42px; border-bottom: 1px solid var(--line); vertical-align: middle;
