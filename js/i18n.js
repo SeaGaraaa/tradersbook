@@ -91,7 +91,7 @@ export const EN = {
   "Сделка #{n}": "Trade #{n}",
   "Отмена": "Cancel",
   "Сохранить": "Save",
-  "Idea — какую идею тестируешь": "Idea — what you are testing",
+  "Idea — какую идею тестируешь (необязательно)": "Idea — what you are testing (optional)",
   "Итог в R: {r}": "Result in R: {r}",
   "Совет: в бэктесте ставь одинаковый Risk (например 0,5), тогда идеи честно сравниваются в R.": "Tip: use the same Risk in backtests (e.g. 0.5) so ideas compare fairly in R.",
   "Удалить сделку": "Delete trade",

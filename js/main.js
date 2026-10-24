@@ -161,6 +161,7 @@ const res = (t) => String(t.v[COL.result] ?? "").trim();
 const resClass = (r) => ({ Win: "win", Lose: "lose", BE: "be" }[r] || "");
 const sgn = (x) => (x > 0 ? "pos" : x < 0 ? "neg" : "");
 const ideaOf = (t) => String(t.v[IDEA] ?? "").trim();
+const ideaName = (n) => (n ? esc(n) : tr("без идеи")); // сделки бэктеста без идеи — отдельной группой
 
 // ---------------- экраны входа ----------------
 
@@ -245,11 +246,11 @@ function modeBar() {
       <button type="button" data-mode="bt" class="${isBT() ? "on" : ""}">${tr("Бэктест")}</button>
     </div>
     ${isBT() && S.view === "stats" && ideaRows().length ? `<select id="ideaTop" class="idea-sel">${ideaRows().map(({ name }) =>
-      `<option ${name === activeIdea() ? "selected" : ""}>${esc(name)}</option>`).join("")}</select>` : ""}
+      `<option value="${esc(name)}" ${name === activeIdea() ? "selected" : ""}>${ideaName(name)}</option>`).join("")}</select>` : ""}
   </div>`;
 }
 
-const ideasInTrades = () => [...new Set(trades("bt").map(ideaOf).filter(Boolean))];
+const ideasInTrades = () => [...new Set(trades("bt").map(ideaOf))];
 
 // Идеи с закрытыми сделками, лучшая (по Expectancy R) сверху.
 function ideaRows() {
@@ -262,7 +263,7 @@ function ideaRows() {
 // Идея для Dashboard/Stats бэктеста: выбранная, а если её нет — лучшая.
 function activeIdea() {
   const rows = ideaRows();
-  return rows.some((r) => r.name === S.btIdea) ? S.btIdea : rows[0]?.name || "";
+  return rows.some((r) => r.name === S.btIdea) ? S.btIdea : rows[0] ? rows[0].name : null; // null — нет идей с результатом, "" — «без идеи»
 }
 
 function pickIdea(name) {
@@ -384,13 +385,12 @@ function renderList() {
   const table = `
     <div class="table-wrap"><table class="grid">
       <thead><tr>
-        <th class="r c-num">#</th><th>Open</th><th>Close</th>${bt ? "<th>Idea</th>" : ""}<th>Direction</th><th>Pair</th><th>Session</th><th>POI</th><th>Entry</th>
+        <th class="r c-num">#</th><th>Open</th><th>Close</th><th>Direction</th><th>Pair</th><th>Session</th><th>POI</th><th>Entry</th>
         <th>Result</th><th class="r">RR</th><th class="r">Risk</th><th class="r">Profit</th>
       </tr></thead>
       <tbody>${desc.map((t) => `
         <tr data-n="${t.n}" class="${resClass(res(t))}">
           <td class="r c-num">${num_.get(t.n)}</td><td>${esc(fmtDT(t.v[0]))}</td><td>${esc(fmtDT(t.v[1]))}</td>
-          ${bt ? `<td class="c-idea" title="${esc(ideaOf(t))}">${esc(ideaOf(t))}</td>` : ""}
           <td>${dirSpan(t)}</td>
           <td>${esc(t.v[3])}</td><td>${esc(t.v[4])}</td><td class="c-poi" title="${esc(t.v[5])}">${esc(t.v[5])}</td><td>${esc(t.v[6])}</td>
           <td><span class="res ${resClass(res(t))}">${esc(res(t))}</span></td>
@@ -496,7 +496,7 @@ function ideasTable() {
       <thead><tr><th>Idea</th><th class="r">Trades</th><th class="r">WinRate</th><th class="r">Expectancy (R)</th><th class="r">Σ R</th>
         <th class="r">Profit Factor</th><th class="r">AVG RR</th><th class="r">Profit</th><th class="r">Max DD</th></tr></thead>
       <tbody>${rows.map(({ name, k }) => `
-        <tr class="pick ${sel && sel === name ? "sel" : ""}" data-idea="${esc(name)}">
+        <tr class="pick ${sel != null && sel === name ? "sel" : ""}" data-idea="${esc(name)}">
           <td>${name ? esc(name) : `<span class="muted">${tr("без идеи")}</span>`}${k.total < MIN_SAMPLE ? ` <span class="few" title="${tr("Меньше {n} сделок — вывод делать рано", { n: MIN_SAMPLE })}">${tr("мало данных")}</span>` : ""}</td>
           <td class="r">${k.total}</td><td class="r">${fmtPct(k.winrate)}</td>
           <td class="r"><b class="${sgn(k.expectancy)}">${fmtSigned(k.expectancy)}</b></td>
@@ -505,7 +505,7 @@ function ideasTable() {
           <td class="r ${sgn(k.profit)}">${fmtSigned(k.profit)}%</td><td class="r">${fmtNum(k.maxDD)}%</td>
         </tr>`).join("")}</tbody></table></div>
     <div class="idea-cards">${rows.map(({ name, k }) => `
-      <div class="idea-card pick ${sel && sel === name ? "sel" : ""}" data-idea="${esc(name)}">
+      <div class="idea-card pick ${sel != null && sel === name ? "sel" : ""}" data-idea="${esc(name)}">
         <div class="ic-name">${name ? esc(name) : `<span class="muted">${tr("без идеи")}</span>`}${k.total < MIN_SAMPLE ? ` <span class="few">${tr("мало данных")}</span>` : ""}</div>
         <div class="ic-grid">
           <div><span>Expectancy</span><b class="${sgn(k.expectancy)}">${fmtSigned(k.expectancy)} R</b></div>
@@ -521,13 +521,13 @@ function ideasTable() {
 }
 
 function renderDashboard() {
-  if (isBT() && !activeIdea()) { $("#view").innerHTML = modeBar() + ideasTable(); return; }
+  if (isBT() && activeIdea() == null) { $("#view").innerHTML = modeBar() + ideasTable(); return; }
   const st = compute(scoped(), S.lists);
   const k = st.kpi;
   const kp = (label, value, cls = "") => `<div class="kpi"><div class="kpi-l">${label}</div><div class="kpi-v ${cls}">${value}</div></div>`;
   $("#view").innerHTML = modeBar() + `
     ${isBT() ? ideasTable() : ""}
-    ${isBT() ? `<h2 class="sec">${tr("Идея: {name}", { name: esc(activeIdea()) })}</h2>` : ""}
+    ${isBT() ? `<h2 class="sec">${tr("Идея: {name}", { name: ideaName(activeIdea()) })}</h2>` : ""}
     <div class="kpis">
       ${kp("Total Trades", k.total)}
       ${kp("WinRate", fmtPct(k.winrate))}
@@ -591,7 +591,7 @@ function zeroBars(rows, label, short, frac = 1) {
 }
 
 function renderStats() {
-  if (isBT() && !activeIdea()) {
+  if (isBT() && activeIdea() == null) {
     $("#view").innerHTML = `<div class="stats-page">${modeBar()}<section class="panel stats-empty">
       <h3>${tr("Пока нет сделок бэктеста с результатом")}</h3>
       <p class="muted">${tr("Открой «Журнал» → «Бэктест», нажми «+», выбери идею и запиши сделку с результатом — здесь появится её статистика по месяцам и дням недели.")}</p>
@@ -612,7 +612,7 @@ function renderStats() {
   const head = `<thead><tr><th></th><th class="r">${tr("Сделок")}</th><th class="r">W / L / BE</th><th class="r">WinRate</th>
     <th class="r">Profit</th><th class="r">Σ R</th><th class="r">PF</th></tr></thead>`;
   $("#view").innerHTML = `<div class="stats-page">${modeBar()}
-    ${isBT() ? `<h2 class="sec">${tr("Идея: {name}", { name: esc(activeIdea()) })}</h2>` : ""}
+    ${isBT() ? `<h2 class="sec">${tr("Идея: {name}", { name: ideaName(activeIdea()) })}</h2>` : ""}
     <div class="kpis stats-kpis">
       ${tile(tr("Итог"), fmtSigned(T.profit) + "%", sgn(T.profit), T.withR ? `${fmtSigned(T.totalR)} R` : "")}
       ${tile(tr("Сделок"), T.trades, "", tr("в среднем {n} в месяц", { n: fmtNum(p.avgPerMonth, 1) }))}
@@ -626,7 +626,7 @@ function renderStats() {
       ${zeroBars(p.months, (m) => fmtMonth(m.key), (m) => fmtMonth(m.key).slice(0, 3) + " " + m.key.slice(2, 4))}
     </section>
     <section class="panel">
-      <h3>${tr("По месяцам")}${isBT() ? ` <span class="muted">${tr("— {name}, месяц — дата сделки на истории", { name: esc(activeIdea()) })}</span>` : ""}</h3>
+      <h3>${tr("По месяцам")}${isBT() ? ` <span class="muted">${tr("— {name}, месяц — дата сделки на истории", { name: ideaName(activeIdea()) })}</span>` : ""}</h3>
       <div class="ana-scroll-x"><table class="ana stats-table">${head}
         <tbody>${[...p.months].reverse().map((m) => row(esc(fmtMonth(m.key)), m)).join("")}${row(tr("Итого"), T, "total")}</tbody>
       </table></div>
@@ -715,7 +715,7 @@ function openEditor(n, form = null) {
   if (n && !t) { toast(tr("Сделка не найдена — таблица изменилась"), true); return; }
   S.ed = {
     mode: S.mode, n: t ? t.n : null, key: t ? { open: t.v[0], pair: t.v[3] } : null,
-    form: form || toForm(t, isBT() ? activeIdea() : ""), uploading: {}, activeTf: "H4", manage: null,
+    form: form || toForm(t, isBT() ? activeIdea() || "" : ""), uploading: {}, activeTf: "H4", manage: null,
   };
   {
     const f = S.ed.form;
@@ -820,7 +820,7 @@ function renderEditor() {
       </div>
       <div class="ed-body">
         ${tvBanner()}
-        ${bt ? listField("idea", tr("Idea — какую идею тестируешь"), S.lists.idea, f.idea ? [f.idea] : []) : ""}
+        ${bt ? listField("idea", tr("Idea — какую идею тестируешь (необязательно)"), S.lists.idea, f.idea ? [f.idea] : []) : ""}
         <div class="row2">
           <label>Open<input type="datetime-local" data-k="open" value="${esc(f.open)}"></label>
           <label>Close<input type="datetime-local" data-k="close" value="${esc(f.close)}"></label>
@@ -2485,7 +2485,6 @@ async function saveEditor() {
   const bk = api.BOOKS[ed.mode];
   if (Object.values(ed.uploading).some((x) => x > 0)) { toast(tr("Подожди, скриншот ещё загружается")); return; }
   const v = formValues(ed.form, S.lists.tf);
-  if (ed.mode === "bt" && !v[IDEA]) { toast(tr("Выбери идею — без неё сделку не с чем сравнивать"), true); return; }
   if (v[0] === "") { toast(tr("Укажи время входа (Open)"), true); return; }
   if (!v[3]) { toast(tr("Укажи пару"), true); return; }
   const old = ed.n ? trades(ed.mode).find((x) => x.n === ed.n) : null;
