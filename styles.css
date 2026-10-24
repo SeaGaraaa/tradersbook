@@ -782,9 +782,10 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
   .tabs::-webkit-scrollbar { display: none; }
   .top .actions { flex: none; }
 }
-/* маленькие телефоны: в шапке только логотип без названия */
+/* маленькие телефоны: шапка плотнее; название прячется только на самых узких экранах */
+@media (max-width: 345px) { .brand > span:not(.logo):not(.spinner) { display: none !important; } }
 @media (max-width: 380px) {
-  .brand > span:not(.logo):not(.spinner) { display: none !important; }
+  .brand { gap: 8px; font-size: 15px; }
   .tab-l, .tab-s { font-size: 9px !important; }
   .tab-i { width: 36px; padding: 4px 8px; }
 }
@@ -970,7 +971,9 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 @media (max-width: 640px) { .ai-top { gap: 14px; } .ai-score { width: 84px; height: 84px; } .ai-score b { font-size: 26px; } .ai-run .btn { width: 100%; } }
 .ai-score span { font-size: 9px; letter-spacing: .02em; } .ai-sec.nw-setbox { flex-direction: column !important; align-items: stretch !important; gap: 8px !important; }
 @media (max-width: 640px) { .ai-txt { display: none; } .ai-btn { min-width: 34px !important; padding: 0 !important; font-size: 16px !important; } }
-@media (max-width: 440px) { body.ai-on .brand > span:not(.logo):not(.spinner) { display: none !important; } }
+/* узкий телефон с кнопкой AI: название остаётся, только чуть плотнее; прячется лишь на самых узких экранах */
+@media (max-width: 440px) { body.ai-on .brand { gap: 8px; font-size: 15px; } body.ai-on .top .actions { gap: 5px; } }
+@media (max-width: 345px) { body.ai-on .brand > span:not(.logo):not(.spinner) { display: none !important; } }
 
 /* ---------- распознавание скриншотов TradingView ---------- */
 .ai-tvbox { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px dashed var(--line); border-radius: 12px; }
