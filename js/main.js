@@ -14,7 +14,7 @@ import * as AI from "./ai.js";
 import * as TV from "./tvread.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
-  num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, monthKey, fromInput, sameMinute, sessionOf,
+  num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, weekdayName, weekdayOf, monthKey, fromInput, sameMinute, sessionOf,
   fmtNum, fmtSigned, fmtPct, fmtDuration, esc, tvImage, driveId, directImage, lsGet, lsSet, lsDel,
   journalTz, deviceTz, setJournalTz, tzLabel, nowSerial, msToSerial, serialToMs, tzOffsetMin,
 } from "./util.js";
@@ -380,17 +380,18 @@ function renderList() {
     return Number.isNaN(x) ? esc(t.v[COL.profit]) : `<span class="${sgn(x)}">${fmtSigned(x)}%</span>`;
   };
   const n2 = (v) => (isNum(v) ? fmtNum(num(v)) : esc(v));
+  const dayShort = (t) => { const s = parseDT(t.v[0]); return Number.isNaN(s) ? "" : weekdayName(weekdayOf(s), true); };
   const dirSpan = (t) => `<span class="dir ${t.v[2] === "Long" ? "long" : t.v[2] === "Short" ? "short" : ""}">${esc(t.v[2])}</span>`;
 
   const table = `
     <div class="table-wrap"><table class="grid">
       <thead><tr>
-        <th class="r c-num">#</th><th>Open</th><th>Close</th><th>Direction</th><th>Pair</th><th>Session</th><th>POI</th><th>Entry</th>
+        <th class="r c-num">#</th><th>Day</th><th>Open</th><th>Close</th><th>Direction</th><th>Pair</th><th>Session</th><th>POI</th><th>Entry</th>
         <th>Result</th><th class="r">RR</th><th class="r">Risk</th><th class="r">Profit</th>
       </tr></thead>
       <tbody>${desc.map((t) => `
         <tr data-n="${t.n}" class="${resClass(res(t))}">
-          <td class="r c-num">${num_.get(t.n)}</td><td>${esc(fmtDT(t.v[0]))}</td><td>${esc(fmtDT(t.v[1]))}</td>
+          <td class="r c-num">${num_.get(t.n)}</td><td class="c-day">${dayShort(t)}</td><td>${esc(fmtDT(t.v[0]))}</td><td>${esc(fmtDT(t.v[1]))}</td>
           <td>${dirSpan(t)}</td>
           <td>${esc(t.v[3])}</td><td>${esc(t.v[4])}</td><td class="c-poi" title="${esc(t.v[5])}">${esc(t.v[5])}</td><td>${esc(t.v[6])}</td>
           <td><span class="res ${resClass(res(t))}">${esc(res(t))}</span></td>
@@ -486,6 +487,30 @@ function anaTable(title, rows, extra = []) {
       ${extra.map((x) => `<td class="r">${x.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table></section>`;
 }
 
+// Дни недели на Dashboard: winrate и результат по дню входа + лучший день.
+function dayAnalysis(list) {
+  const narrow = window.innerWidth < 560; // на телефоне — «Пн», чтобы таблица влезала
+  const days = period(list).days.filter((d) => d.trades).map((d) => ({ ...d, name: weekdayName(d.day, narrow) }));
+  const R = (r) => (r.withR ? `<span class="${sgn(r.totalR / r.withR)}">${fmtSigned(r.totalR / r.withR)}</span>` : "—");
+  let best = "";
+  if (days.length > 1) {
+    const byWr = [...days].filter((d) => d.win + d.lose).sort((a, b) => b.winrate - a.winrate || b.trades - a.trades)[0];
+    const byPr = [...days].sort((a, b) => b.profit - a.profit)[0];
+    const few = (d) => (d.trades < MIN_SAMPLE ? ` <span class="few" title="${tr("Меньше {n} сделок — вывод делать рано", { n: MIN_SAMPLE })}">${tr("мало данных")}</span>` : "");
+    best = `<div class="best-day">
+      ${byWr ? `<div><span class="muted">${tr("Лучший winrate")}:</span> <b>${byWr.name}</b> — ${fmtPct(byWr.winrate)} · ${tr("{n} сделок", { n: byWr.trades })}${few(byWr)}</div>` : ""}
+      <div><span class="muted">${tr("Больше всего прибыли")}:</span> <b>${byPr.name}</b> — <span class="${sgn(byPr.profit)}">${fmtSigned(byPr.profit)}%</span> · ${tr("{n} сделок", { n: byPr.trades })}${few(byPr)}</div>
+    </div>`;
+  }
+  return `<section class="panel"><h3>Day Analysis <span class="muted">${tr("— день входа в сделку")}</span></h3>
+    ${days.length ? `<table class="ana">
+    <thead><tr><th></th><th class="r">Trades</th><th class="r">Win</th><th class="r">Winrate</th><th class="r nw">Exp. R</th><th class="r">Profit</th></tr></thead>
+    <tbody>${days.map((r) => `<tr><td>${esc(r.name)}</td><td class="r">${r.trades}</td><td class="r">${r.win}</td>
+      <td class="r wr-td">${wrCell(r)}</td><td class="r">${R(r)}</td>
+      <td class="r"><span class="${sgn(r.profit)}">${fmtSigned(r.profit)}%</span></td></tr>`).join("")}</tbody></table>${best}`
+    : `<div class="empty">${tr("Пока нет сделок с датой")}</div>`}</section>`;
+}
+
 // Сравнение идей бэктеста: те же показатели, что на Dashboard, по каждой идее.
 function ideasTable() {
   const rows = ideaRows();
@@ -543,6 +568,7 @@ function renderDashboard() {
       ${anaTable("POI Analysis", st.poi)}
       ${anaTable("Entry Model Analysis", st.entry)}
       ${anaTable("Session Analysis", st.session, [{ h: "AVG RR", f: (r) => fmtNum(r.rr) }])}
+      ${dayAnalysis(scoped())}
       ${anaTable(tr("По инструментам"), st.pair, [
         { h: "Profit", f: (r) => `<span class="${sgn(r.profit)}">${fmtSigned(r.profit)}%</span>` },
         { h: "PF", f: (r) => (r.pf == null ? "—" : fmtNum(r.pf)) },
@@ -697,7 +723,9 @@ function sessionNoteHtml() {
     ? `<span class="muted">${tr("авто — по времени входа")}</span>`
     : `<span class="muted">${tr("по времени входа: {s}", { s: a })}</span> <button type="button" class="link-btn" data-act="sess-auto">${tr("подставить")}</button>`;
 }
-function sessionNote() { const n = $("#editor .sess-note"); if (n) n.innerHTML = sessionNoteHtml(); }
+function sessionNote() { const n = $("#editor .sess-note"); if (n) n.innerHTML = sessionNoteHtml(); const d = $("#editor .day-note"); if (d) d.innerHTML = dayNoteHtml(); }
+// День недели под полем Open — считается сам по дате входа.
+function dayNoteHtml() { const s = fromInput(S.ed?.form?.open || ""); return s === "" ? "" : `<span class="muted">${tr("день")}: <b>${weekdayName(weekdayOf(s))}</b></span>`; }
 function applyAutoSession() {
   const f = S.ed?.form;
   if (!f) return;
@@ -822,7 +850,7 @@ function renderEditor() {
         ${tvBanner()}
         ${bt ? listField("idea", tr("Idea — какую идею тестируешь (необязательно)"), S.lists.idea, f.idea ? [f.idea] : []) : ""}
         <div class="row2">
-          <label>Open<input type="datetime-local" data-k="open" value="${esc(f.open)}"></label>
+          <label>Open<input type="datetime-local" data-k="open" value="${esc(f.open)}"><span class="day-note">${dayNoteHtml()}</span></label>
           <label>Close<input type="datetime-local" data-k="close" value="${esc(f.close)}"></label>
         </div>
         ${listField("pair", "Pair", S.lists.pair, f.pair ? [f.pair] : [])}

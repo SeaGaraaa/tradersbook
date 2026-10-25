@@ -48,6 +48,14 @@ export function fmtDay(s) {
   return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}, ${wd}`;
 }
 
+// День недели по времени входа: 0 — воскресенье. short — «Пн»/«Mon», иначе полное название.
+export function weekdayName(d, short = false) {
+  const en = LANG === "en";
+  return (short ? (en ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"])
+    : (en ? ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] : ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]))[d];
+}
+export const weekdayOf = (s) => serialToDate(s).getUTCDay();
+
 export function monthKey(s) {
   const d = serialToDate(s);
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;

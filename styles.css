@@ -115,6 +115,10 @@ body.bt { --accent: #a855f7; --on-accent: #ffffff; }
 table.ideas tr.pick { cursor: pointer; }
 .idea-cell { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 260px; }
 .idea-cell .few { margin-left: 0; }
+.grid td.c-day { color: var(--muted); font-weight: 600; }
+.day-note { display: block; font-size: 12px; margin-top: 4px; min-height: 16px; }
+.ana th.nw { white-space: nowrap; }
+.best-day { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; font-size: 13px; }
 .kpi-note { font-size: 12px; font-weight: 600; color: var(--muted); }
 table.ideas tr.pick:hover td { background: var(--panel2); }
 table.ideas tr.sel td { background: color-mix(in srgb, var(--accent) 14%, transparent); }

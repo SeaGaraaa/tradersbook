@@ -1,6 +1,6 @@
 // Кэш оболочки приложения: сначала сеть (чтобы обновления приходили сразу), без сети — из кэша.
 // Запросы к Google (данные, вход) не кэшируются.
-const CACHE = "tj-v65";
+const CACHE = "tj-v66";
 const SHELL = ["./", "index.html", "styles.css", "config.js", "manifest.webmanifest",
   "js/main.js", "js/api.js", "js/auth.js", "js/stats.js", "js/form.js", "js/util.js", "js/checklist.js", "js/export.js", "js/i18n.js", "js/strategy.js",
   "icons/tb-icon-192.png", "icons/tb-icon-512.png", "icons/tb-apple-touch-icon.png", "icons/tb-logo-64.png", "icons/tb-checklist.png"];
