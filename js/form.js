@@ -8,12 +8,13 @@ export const BASE_HEADERS = ["Date-Time Open", "Date-Time Close", "Direction", "
 export const SCREENS = 20; // колонка U: скриншоты других таймфреймов, строки «TF: ссылка»
 export const IDEA = 21; // колонка V (только Backtest): идея
 export const CHECK = 22; // колонка W: чек-лист «setup:LR; yes:…; no:…»
-export const MAXCOLS = 23;
+export const ACCOUNT = 23; // колонка X (только Journal): счёт / проп-компания
+export const MAXCOLS = 24;
 export const TF = ["W1", "D1", "H4", "H1", "m15", "m5", "m3"]; // свои колонки L..R
 export const LINK0 = 11; // колонка L
 export const NUM_COLS = [8, 9, 10]; // RR, Risk, Profit
 
-export const headersFor = (ncols) => [...BASE_HEADERS, "Screens", "Idea", "Checklist"].slice(0, ncols);
+export const headersFor = (ncols) => [...BASE_HEADERS, "Screens", "Idea", "Checklist", "Account"].slice(0, ncols);
 
 const res = (t) => String(t.v[7] ?? "").trim();
 const normPoi = (s) => String(s ?? "").split(",").map((x) => x.trim()).filter(Boolean).join(", ");
@@ -51,7 +52,7 @@ export function emptyForm(now = new Date(), idea = "") {
   return {
     open: toInput(s), close: "", dir: "", pair: "", session: sessionOf(s), sessionAuto: true,
     poi: [], entry: "", result: "", rr: "", risk: "", profit: "",
-    shots: Object.fromEntries(TF.map((tf) => [tf, []])), exit: "", notes: "", idea, check: emptyCheck(),
+    shots: Object.fromEntries(TF.map((tf) => [tf, []])), exit: "", notes: "", idea, check: emptyCheck(), account: "",
   };
 }
 
@@ -70,7 +71,7 @@ export function toForm(t, idea = "") {
     poi: normPoi(t.v[5]).split(", ").filter(Boolean),
     entry: String(t.v[6] ?? ""), result: res(t), rr: n(t.v[8]), risk: n(t.v[9]), profit: n(t.v[10]),
     shots, exit: String(t.v[18] ?? ""), notes: String(t.v[19] ?? ""), idea: String(t.v[IDEA] ?? "").trim(),
-    check: parseCheck(t.v[CHECK]),
+    check: parseCheck(t.v[CHECK]), account: String(t.v[ACCOUNT] ?? "").trim(),
   };
 }
 
@@ -85,6 +86,7 @@ export function formValues(f, tfOrder = []) {
   v[SCREENS] = formatScreens(Object.fromEntries(Object.entries(f.shots).map(([k, u]) => [k.trim(), u])), tfOrder);
   v[IDEA] = (f.idea || "").trim();
   v[CHECK] = formatCheck(f.check);
+  v[ACCOUNT] = (f.account || "").trim();
   return v;
 }
 

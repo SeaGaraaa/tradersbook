@@ -2,7 +2,7 @@ import { CONFIG } from "../config.js";
 import * as auth from "./auth.js";
 import * as api from "./api.js";
 import { compute, period, COL } from "./stats.js";
-import { TF, NUM_COLS, IDEA, SCREENS, CHECK, toForm, formValues, diff } from "./form.js";
+import { TF, NUM_COLS, IDEA, SCREENS, CHECK, ACCOUNT, toForm, formValues, diff } from "./form.js";
 import * as CL from "./checklist.js";
 import { exportPNG, exportPDF, exportAi } from "./export.js";
 import * as St from "./strategy.js";
@@ -116,6 +116,7 @@ const S = {
   strategy: null, strategyData: "", stB: null, stBOrig: "", stEdit: null, stPreview: false, // торговая стратегия (лист Strategy); stEdit — текст в правке
   f: { live: emptyFilter(), bt: emptyFilter() },
   btIdea: lsGet("tj.btIdea") || "", // идея, выбранная на Dashboard бэктеста
+  account: lsGet("tj.account") || "", // счёт реального журнала: "" — все, "_none" — без счёта
   ed: null, // открытая карточка: { mode, n, key, form, uploading, manage }
 };
 
@@ -161,6 +162,15 @@ const res = (t) => String(t.v[COL.result] ?? "").trim();
 const resClass = (r) => ({ Win: "win", Lose: "lose", BE: "be" }[r] || "");
 const sgn = (x) => (x > 0 ? "pos" : x < 0 ? "neg" : "");
 const ideaOf = (t) => String(t.v[IDEA] ?? "").trim();
+// Счета (проп-компании) реального журнала — колонка X «Account»
+const accountOf = (t) => String(t.v[ACCOUNT] ?? "").trim();
+const accountsList = () => [...new Set(trades("live").map(accountOf).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const activeAccount = () => {
+  if (isBT() || !S.account) return "";
+  if (S.account === "_none") return trades("live").some((t) => !accountOf(t)) ? "_none" : "";
+  return accountsList().includes(S.account) ? S.account : "";
+};
+const acctOk = (t) => { const a = activeAccount(); return !a || (a === "_none" ? !accountOf(t) : accountOf(t) === a); };
 const ideaName = (n) => (n ? esc(n) : tr("без идеи")); // сделки бэктеста без идеи — отдельной группой
 
 // ---------------- экраны входа ----------------
@@ -245,6 +255,9 @@ function modeBar() {
       <button type="button" data-mode="live" class="${!isBT() ? "on" : ""}">${tr("Реальный счёт")}</button>
       <button type="button" data-mode="bt" class="${isBT() ? "on" : ""}">${tr("Бэктест")}</button>
     </div>
+    ${!isBT() && ["journal", "dashboard", "stats", "ai"].includes(S.view) && accountsList().length ? `<select id="acctTop" class="idea-sel acct-sel" aria-label="${tr("Счёт")}">
+      <option value="">${tr("Все счета")}</option>${accountsList().map((a) => `<option value="${esc(a)}" ${a === activeAccount() ? "selected" : ""}>${esc(a)}</option>`).join("")}
+      ${trades("live").some((t) => !accountOf(t)) ? `<option value="_none" ${activeAccount() === "_none" ? "selected" : ""}>${tr("без счёта")}</option>` : ""}</select>` : ""}
     ${isBT() && S.view === "stats" && ideaRows().length ? `<select id="ideaTop" class="idea-sel">${ideaRows().map(({ name }) =>
       `<option value="${esc(name)}" ${name === activeIdea() ? "selected" : ""}>${ideaName(name)}</option>`).join("")}</select>` : ""}
   </div>`;
@@ -291,6 +304,8 @@ function render() {
   else renderStats();
   const top = $("#ideaTop");
   if (top) top.oninput = (e) => pickIdea(e.target.value);
+  const at = $("#acctTop");
+  if (at) at.oninput = (e) => { S.account = e.target.value; lsSet("tj.account", S.account); render(); };
   newsBar();
 }
 
@@ -315,6 +330,7 @@ function filtered(list = trades()) {
   const { pair, result, month, q } = F();
   const ql = q.trim().toLowerCase();
   return list.filter((t) => {
+    if (!acctOk(t)) return false;
     if (pair && t.v[COL.pair] !== pair) return false;
     if (result === "_empty" ? res(t) !== "" : result && res(t) !== result) return false;
     if (month) { const s = parseDT(t.v[COL.open]); if (Number.isNaN(s) || monthKey(s) !== month) return false; }
@@ -324,7 +340,7 @@ function filtered(list = trades()) {
 }
 
 // для Dashboard/Stats бэктеста — только выбранная идея
-const scoped = () => (isBT() ? trades().filter((t) => ideaOf(t) === activeIdea()) : trades());
+const scoped = () => (isBT() ? trades().filter((t) => ideaOf(t) === activeIdea()) : trades().filter(acctOk));
 
 function opt(list, cur, all) {
   return `<option value="">${all}</option>` + list.map((x) =>
@@ -374,6 +390,7 @@ function renderList() {
   const desc = [...rows].reverse(); // новые сверху
   const num_ = tradeNumbers();
   const bt = isBT();
+  const showAcc = !bt && accountsList().length > 0 && !activeAccount();
 
   const profitCell = (t) => {
     const x = num(t.v[COL.profit]);
@@ -386,14 +403,14 @@ function renderList() {
   const table = `
     <div class="table-wrap"><table class="grid">
       <thead><tr>
-        <th class="r c-num">#</th><th>Day</th><th>Open</th><th>Close</th><th>Direction</th><th>Pair</th><th>Session</th><th>POI</th><th>Entry</th>
+        <th class="r c-num">#</th><th>Day</th><th>Open</th><th>Close</th><th>Direction</th><th>Pair</th>${showAcc ? '<th class="c-acc">Account</th>' : ""}<th>Session</th><th>POI</th><th>Entry</th>
         <th>Result</th><th class="r">RR</th><th class="r">Risk</th><th class="r">Profit</th>
       </tr></thead>
       <tbody>${desc.map((t) => `
         <tr data-n="${t.n}" class="${resClass(res(t))}">
           <td class="r c-num">${num_.get(t.n)}</td><td class="c-day">${dayShort(t)}</td><td>${esc(fmtDT(t.v[0]))}</td><td>${esc(fmtDT(t.v[1]))}</td>
           <td>${dirSpan(t)}</td>
-          <td>${esc(t.v[3])}</td><td>${esc(t.v[4])}</td><td class="c-poi" title="${esc(t.v[5])}">${esc(t.v[5])}</td><td>${esc(t.v[6])}</td>
+          <td${showAcc && accountOf(t) ? ` title="${esc(accountOf(t))}"` : ""}>${esc(t.v[3])}</td>${showAcc ? `<td class="c-acc" title="${esc(accountOf(t))}">${esc(accountOf(t))}</td>` : ""}<td>${esc(t.v[4])}</td><td class="c-poi" title="${esc(t.v[5])}">${esc(t.v[5])}</td><td>${esc(t.v[6])}</td>
           <td><span class="res ${resClass(res(t))}">${esc(res(t))}</span></td>
           <td class="r">${n2(t.v[8])}</td><td class="r">${n2(t.v[9])}</td><td class="r">${profitCell(t)}</td>        </tr>`).join("")}
       </tbody></table></div>`;
@@ -429,6 +446,7 @@ function renderList() {
         <div class="card-bot">
           ${isNum(t.v[9]) ? `<span class="muted">Risk ${fmtNum(num(t.v[9]))}%</span>` : ""}
           ${isNum(t.v[8]) ? `<span class="muted">RR ${fmtNum(num(t.v[8]))}</span>` : ""}
+          ${showAcc && accountOf(t) ? `<span class="card-acc">${esc(accountOf(t))}</span>` : ""}
         </div>
       </div>`;
   }).join("");
@@ -738,12 +756,18 @@ function applyAutoSession() {
   sessionNote();
 }
 
+function newForm(t) {
+  const f = toForm(t, isBT() ? activeIdea() || "" : "");
+  if (!t && !isBT() && activeAccount() && activeAccount() !== "_none") f.account = activeAccount();
+  return f;
+}
+
 function openEditor(n, form = null) {
   const t = n ? trades().find((x) => x.n === n) : null;
   if (n && !t) { toast(tr("Сделка не найдена — таблица изменилась"), true); return; }
   S.ed = {
     mode: S.mode, n: t ? t.n : null, key: t ? { open: t.v[0], pair: t.v[3] } : null,
-    form: form || toForm(t, isBT() ? activeIdea() || "" : ""), uploading: {}, activeTf: "H4", manage: null,
+    form: form || newForm(t), uploading: {}, activeTf: "H4", manage: null,
   };
   {
     const f = S.ed.form;
@@ -854,6 +878,8 @@ function renderEditor() {
           <label>Close<input type="datetime-local" data-k="close" value="${esc(f.close)}"></label>
         </div>
         ${listField("pair", "Pair", S.lists.pair, f.pair ? [f.pair] : [])}
+        ${bt ? "" : `<label>${tr("Счёт (Account)")}<input data-k="account" list="accList" value="${esc(f.account || "")}" placeholder="${tr("например The5ers 100K")}" maxlength="60">
+          <datalist id="accList">${accountsList().map((a) => `<option value="${esc(a)}">`).join("")}</datalist></label>`}
         <label>Direction${seg("dir", ["Long", "Short"], f.dir)}</label>
         <div class="row2">
           <label>Session${sel("session", S.lists.session)}<span class="sess-note">${sessionNoteHtml()}</span></label>
@@ -1642,7 +1668,7 @@ const AI_PERIODS = [["week", "Эта неделя"], ["lastweek", "Прошла�
 
 function aiTrades() {
   const [a, b] = AI.periodRange(AIV.kind, AIV.from, AIV.to);
-  return trades(S.mode).filter((t) => { const o = parseDT(t.v[COL.open]); return !Number.isNaN(o) && o >= a && o < b; });
+  return trades(S.mode).filter((t) => { const o = parseDT(t.v[COL.open]); return acctOk(t) && !Number.isNaN(o) && o >= a && o < b; });
 }
 function aiPeriodLabel(list) {
   const ds = list.map((t) => parseDT(t.v[COL.open])).filter((x) => !Number.isNaN(x));
@@ -2548,7 +2574,7 @@ async function saveEditor() {
     }
     // первая запись в колонки U / W — подписать их в заголовке
     const hdr = trades(ed.mode).headers || [];
-    const heads = [[SCREENS, "Screens"], [CHECK, "Checklist"]].filter(([k, name]) => v[k] && hdr[k] !== name);
+    const heads = [[SCREENS, "Screens"], [CHECK, "Checklist"], [ACCOUNT, "Account"]].filter(([k]) => k < bk.ncols).filter(([k, name]) => v[k] && hdr[k] !== name);
     if (heads.length) await api.writeCells(bk, 1, heads);
     clearDraft();
     closeEditor();

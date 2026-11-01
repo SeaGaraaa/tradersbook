@@ -20,7 +20,7 @@ const colLetter = (k) => String.fromCharCode(65 + k);
 // Два журнала: реальные сделки и бэктест. Колонки A..T как в Journal, U — Screens (другие таймфреймы),
 // у бэктеста ещё V — Idea.
 export const BOOKS = {
-  live: { title: CONFIG.journalSheet, ncols: 23 }, // V не используется (Idea только в бэктесте), W — Checklist
+  live: { title: CONFIG.journalSheet, ncols: 24 }, // V не используется (Idea только в бэктесте), W — Checklist, X — Account
   bt: { title: CONFIG.backtestSheet, ncols: 23 },
 };
 
