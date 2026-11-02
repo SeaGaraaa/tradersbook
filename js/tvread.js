@@ -19,6 +19,10 @@ Return ONE JSON object:
    "bottom_y": vertical position of the BOTTOM edge of the whole position box, integer 0-1000 of the image height,
    "entry_price": number or null, "stop_price": number or null, "target_price": number or null
  },
+ "rr_label": number printed on the position tool as "Risk/Reward Ratio" (or "Соотношение риска и прибыли"), else null,
+ "outcome": look at the candles to the RIGHT of the entry (the left edge of the box): "target" if price touched the target price BEFORE the stop, "stop" if it touched the stop BEFORE the target, "open" if candles after the entry are visible but neither level was touched, null if there are no candles after the entry or you cannot tell,
+ "exit_x": horizontal center of the FIRST candle that touched the target or stop (the one from "outcome"), integer 0-1000 of the image width, else null,
+ "exit_time_label": "if a date/time label is explicitly printed at that exit candle, its exact text, else null",
  "time_axis": [ {"text": "label exactly as printed", "x": integer 0-1000 = horizontal center of that label} ... every label on the bottom time axis, left to right ],
  "time_axis_y": vertical center of the bottom time-axis labels, integer 0-1000 of the image height,
  "entry_time_label": "if a date/time label is explicitly printed AT the entry (crosshair label on the time axis, a note or text), its exact text, else null"
@@ -133,17 +137,24 @@ function axisPoints(axis, ref) {
   // даты: «12», «Oct», «Окт», «2026», «12 Oct»
   const firstDay = items.findIndex((a) => /^\d{1,2}$/.test(a.text) || monthOf(a.text) != null || /^\d{1,2}\s+\S+/.test(a.text));
   let y = ref.y, mo = ref.m;
+  // год на шкале («2024») точнее даты снимка: метки до него — предыдущий год
+  const yi = items.findIndex((a) => /^(19|20)\d{2}$/.test(a.text));
+  const yearSure = yi >= 0;
+  if (yearSure) { y = +items[yi].text - (firstDay >= 0 && firstDay < yi ? 1 : 0); mo = firstDay >= 0 && firstDay < yi ? 11 : 0; }
   // первая метка-день: её месяц — месяц скриншота, если день не позже дня скриншота, иначе предыдущий
   const dayVal = (a) => { const m = a.text.match(/^(\d{1,2})/); return m ? +m[1] : null; };
+  let monthSure = false;
   if (firstDay >= 0) {
     const d0 = dayVal(items[firstDay]);
     const mm = monthOf(items[firstDay].text.replace(/^\d+\s*/, ""));
-    if (mm != null && !/^\d{1,2}$/.test(items[firstDay].text)) { mo = mm; if (mo > ref.m) y = ref.y - 1; }
-    else if (d0 != null && d0 > ref.d) { mo = ref.m - 1; if (mo < 0) { mo = 11; y = ref.y - 1; } }
+    if (mm != null && !/^\d{1,2}$/.test(items[firstDay].text)) { mo = mm; monthSure = true; if (!yearSure && mo > ref.m) y = ref.y - 1; }
+    else if (!yearSure && d0 != null && d0 > ref.d) { mo = ref.m - 1; if (mo < 0) { mo = 11; y = ref.y - 1; } }
   }
   const pts = [];
   let day = null, prevD = null;
   for (const a of items) {
+    if (/^(19|20)\d{2}$/.test(a.text)) { y = +a.text; mo = 0; day = 1; prevD = 1; pts.push({ x: a.x, ms: Date.UTC(y, 0, 1) }); continue; }
+    if (monthOf(a.text.replace(/^\d+\s*/, "")) != null) monthSure = true;
     const tm = a.text.match(/^(\d{1,2}):(\d{2})$/);
     const dv = dayVal(a), mv = monthOf(a.text.replace(/^\d+\s*/, ""));
     if (!tm && (dv != null || mv != null)) {
@@ -165,7 +176,30 @@ function axisPoints(axis, ref) {
       pts.push({ x: a.x, ms: Date.UTC(y, mo, d, +tm[1], +tm[2]) });
     }
   }
-  return pts.sort((a, b) => a.x - b.x);
+  const out = pts.sort((a, b) => a.x - b.x);
+  out.yearSure = yearSure; out.monthSure = monthSure;
+  return out;
+}
+
+// Время в точке x по шкале: интерполяция между соседними метками, округление до свечи.
+function timeAt(pts, x, tfm, imgW) {
+  let a = null, b = null;
+  for (let i = 0; i < pts.length - 1; i++) if (pts[i].x <= x && pts[i + 1].x >= x) { a = pts[i]; b = pts[i + 1]; }
+  if (!a && pts.length >= 2) [a, b] = x < pts[0].x ? [pts[0], pts[1]] : [pts[pts.length - 2], pts[pts.length - 1]];
+  if (!(a && b && b.x > a.x && b.ms > a.ms)) return null;
+  let ms;
+  // выходные TradingView не рисует: если между метками скачок больше суток, берём соседний отрезок
+  if (b.ms - a.ms > 30 * 3600e3) {
+    const i = pts.indexOf(b);
+    const c = pts[i + 1];
+    const per = c && c.ms > b.ms ? (c.ms - b.ms) / (c.x - b.x) : null;
+    ms = per ? b.ms - (b.x - x) * per : a.ms + (x - a.x) * (b.ms - a.ms) / (b.x - a.x);
+  } else ms = a.ms + (x - a.x) * (b.ms - a.ms) / (b.x - a.x);
+  // точность: ~4 пикселя ошибки по горизонтали, но не меньше одной свечи
+  const msPerUnit = (b.ms - a.ms) / (b.x - a.x), unitsPerPx = 1000 / (imgW || 1600);
+  const approxMin = Math.max(tfm || 1, Math.round(msPerUnit * unitsPerPx * 4 / 60e3 / (tfm || 1)) * (tfm || 1));
+  if (tfm) ms = Math.round(ms / (tfm * 60e3)) * tfm * 60e3;
+  return { ms, approxMin };
 }
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -196,35 +230,44 @@ export function entryFromShot(raw, now = new Date(), img = null) {
   const out = { pair: sym || "", dir: pt.found ? (pt.side === "short" ? "Short" : pt.side === "long" ? "Long" : "") : "", tf: raw.timeframe || "",
     entry: pt.entry_price ?? null, sl: pt.stop_price ?? null, tp: pt.target_price ?? null, how: "none", chartMs: null, utcMs: null, offset: off };
   const tfm = tfMinutes(raw.timeframe);
+  const hasYear = (s) => /\b(19|20)\d{2}\b|'\d{2}\b/.test(String(s || ""));
+  const pts = axisPoints(raw.time_axis, ref);
+  // дата точная, если год виден (в подписи или на шкале); иначе год и месяц взяты из даты снимка
   let chartMs = parseExplicit(raw.entry_time_label, ref);
-  if (chartMs != null) out.how = "label";
+  if (chartMs != null) { out.how = "label"; out.dateSure = hasYear(raw.entry_time_label); }
   else if (pt.found && Number.isFinite(+pt.left_x)) {
-    const pts = axisPoints(raw.time_axis, ref);
-    const x = +pt.left_x;
-    // две ближайшие метки по обе стороны (или две крайние, если вход за краем шкалы)
-    let a = null, b = null;
-    for (let i = 0; i < pts.length - 1; i++) if (pts[i].x <= x && pts[i + 1].x >= x) { a = pts[i]; b = pts[i + 1]; }
-    if (!a && pts.length >= 2) [a, b] = x < pts[0].x ? [pts[0], pts[1]] : [pts[pts.length - 2], pts[pts.length - 1]];
-    if (a && b && b.x > a.x && b.ms > a.ms) {
-      // выходные TradingView не рисует: если между метками скачок больше суток, берём соседний отрезок
-      if (b.ms - a.ms > 30 * 3600e3) {
-        const i = pts.indexOf(b);
-        const c = pts[i + 1];
-        const per = c && c.ms > b.ms ? (c.ms - b.ms) / (c.x - b.x) : null;
-        chartMs = per ? b.ms - (b.x - x) * per : a.ms + (x - a.x) * (b.ms - a.ms) / (b.x - a.x);
-      } else chartMs = a.ms + (x - a.x) * (b.ms - a.ms) / (b.x - a.x);
-      // точность: ~4 пикселя ошибки по горизонтали, но не меньше одной свечи
-      const msPerUnit = (b.ms - a.ms) / (b.x - a.x), unitsPerPx = 1000 / (img?.width || 1600);
-      out.approxMin = Math.max(tfm || 1, Math.round(msPerUnit * unitsPerPx * 4 / 60e3 / (tfm || 1)) * (tfm || 1));
-      if (tfm) chartMs = Math.round(chartMs / (tfm * 60e3)) * tfm * 60e3;
-      out.how = "axis";
-    }
+    const r = timeAt(pts, +pt.left_x, tfm, img?.width);
+    if (r) { chartMs = r.ms; out.approxMin = r.approxMin; out.how = "axis"; out.dateSure = pts.yearSure; }
   }
+  // RR: по ценам инструмента позиции, иначе подпись Risk/Reward на нём
+  const e = +out.entry, s = +out.sl, t = +out.tp;
+  out.rr = e > 0 && s > 0 && t > 0 && e !== s ? Math.round(Math.abs(t - e) / Math.abs(e - s) * 100) / 100
+    : +raw.rr_label > 0 ? Math.round(+raw.rr_label * 100) / 100 : null;
+  // чем закончилась сделка (видно по свечам после входа) и когда
+  out.outcome = pt.found ? ({ target: "Win", stop: "Lose", open: "open" }[raw.outcome] || "") : "";
+  let exitMs = null;
+  if (out.outcome === "Win" || out.outcome === "Lose") {
+    exitMs = parseExplicit(raw.exit_time_label, ref);
+    if (exitMs == null && Number.isFinite(+raw.exit_x) && raw.exit_x != null) exitMs = timeAt(pts, +raw.exit_x, tfm, img?.width)?.ms ?? null;
+    if (exitMs != null && chartMs != null && exitMs < chartMs) exitMs = null; // выход раньше входа — прочитано неверно
+  }
+  const toUtc = (ms) => (off != null ? ms - off * 3600e3 : null); // без пояса — считаем, что график в поясе журнала
   if (chartMs != null) {
     out.chartMs = chartMs;
-    out.utcMs = off != null ? chartMs - off * 3600e3 : null; // без пояса — считаем, что график во времени устройства
+    out.utcMs = toUtc(chartMs);
     const d = new Date(chartMs);
     out.dateText = `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   }
+  if (exitMs != null) { out.exitChartMs = exitMs; out.exitUtcMs = toUtc(exitMs); }
   return out;
+}
+
+// Таймфрейм графика -> строка скриншотов журнала («5» -> m5, «4H» -> H4, «1D» -> D1); null — не понять.
+export function tfRow(tf) {
+  const m = tfMinutes(tf);
+  if (!m) return null;
+  if (m < 60) return "m" + m;
+  if (m < 1440) return "H" + m / 60;
+  if (m < 10080) return "D" + m / 1440;
+  return "W" + m / 10080;
 }

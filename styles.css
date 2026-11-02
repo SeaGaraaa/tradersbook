@@ -1039,3 +1039,38 @@ svg.zbars { width: 100%; height: auto; display: block; overflow: visible; }
 .nw-thead > div:nth-child(5) { padding-right: 14px; }
 @media (max-width: 640px) { .modebar .acct-sel { flex: 1 1 100%; } }
 @media (max-width: 1180px) { .grid .c-acc { display: none; } } /* таблица не помещается — счёт в подсказке пары и в фильтре */
+
+/* Бэктест: сделки из скриншотов TradingView */
+.filters .imp-open { flex: 0 0 auto; white-space: nowrap; }
+.imp-panel { overflow: visible; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.imp-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.imp-head h3 { margin: 0; color: var(--accent); }
+.imp-panel > .hint { margin: 0 0 12px; line-height: 1.45; }
+.imp-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.imp-add .imp-links { flex: 1 1 220px; min-width: 0; font-size: 14px; padding: 7px 10px; }
+.imp-add .btn { flex: 0 0 auto; }
+.imp-card { cursor: default; display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; border-left-color: var(--accent); }
+.imp-card.off { border-left-color: var(--line); opacity: .75; }
+.imp-card.dup { border-left-color: var(--imp-med, #f59e0b); }
+.imp-thumb img { width: 100%; max-height: 120px; object-fit: cover; object-position: left center; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; display: block; }
+.imp-main { min-width: 0; }
+.imp-top { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; }
+.imp-top input[type="checkbox"] { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.imp-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.imp-top .grow { flex: 1; }
+.imp-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 10px; }
+.imp-fields label { display: block; color: var(--muted); font-size: 12px; font-weight: 600; }
+.imp-fields input, .imp-fields select { margin-top: 4px; font-size: 14px; padding: 7px 8px; }
+.imp-pf { display: flex; flex-direction: column; gap: 4px; font-size: 12px; justify-content: flex-end; }
+.imp-pf b { font-size: 15px; }
+.imp-warn { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.imp-warn:empty { display: none; }
+.imp-w { font-size: 12px; color: var(--imp-med, #f59e0b); border: 1px solid color-mix(in srgb, var(--imp-med, #f59e0b) 45%, var(--line)); border-radius: 999px; padding: 2px 9px; }
+.imp-foot { align-items: center; }
+.imp-foot .hint { margin: 0; min-height: 0; }
+@media (max-width: 560px) {
+  .imp-card { grid-template-columns: minmax(0, 1fr); }
+  .imp-thumb img { max-height: 140px; }
+  .imp-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .imp-fields .imp-dt { grid-column: 1 / -1; }
+}

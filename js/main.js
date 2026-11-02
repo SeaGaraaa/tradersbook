@@ -351,12 +351,14 @@ function renderJournal() {
   const f = F();
   const months = [...new Set(trades().map((t) => parseDT(t.v[COL.open])).filter((s) => !Number.isNaN(s)).map(monthKey))]
     .sort().reverse().map((k) => ({ v: k, t: fmtMonth(k) }));
-  $("#view").innerHTML = modeBar() + `
+  const bt = isBT();
+  $("#view").innerHTML = modeBar() + (bt && IMP.items ? impPanel() : "") + `
     <div class="filters">
       <select id="fPair">${opt(S.lists.pair, f.pair, tr("Все пары"))}</select>
       <select id="fRes">${opt([...DEF.result, { v: "_empty", t: tr("Без результата") }], f.result, tr("Любой результат"))}</select>
       <select id="fMonth">${opt(months, f.month, tr("Все месяцы"))}</select>
       <input id="fQ" type="search" placeholder="${tr("Поиск")}" value="${esc(f.q)}">
+      ${bt && !IMP.items ? `<button type="button" class="btn ghost sm imp-open" data-act="imp-open">✦ ${tr("Из скриншотов")}</button>` : ""}
     </div>
     <div id="summary" class="summary"></div>
     <div id="list"></div>`;
@@ -1838,7 +1840,7 @@ function aiBtnSync() {
 }
 
 // ---------------- распознавание скриншотов TradingView в карточке сделки ----------------
-const TV_LABEL = { pair: "Пара", dir: "Направление", open: "Время входа", session: "Сессия", rr: "RR" };
+const TV_LABEL = { pair: "Пара", dir: "Направление", open: "Время входа", close: "Время выхода", result: "Результат", session: "Сессия", rr: "RR" };
 const tvOn = () => { const s = AI.settings(); return s.enabled && s.tvread && !!AI.activeKey(s); };
 const blobToB64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
 async function blobPixels(blob) {
@@ -1877,7 +1879,9 @@ async function tvRecognize(blob) {
 }
 
 // Значения для формы из распознанного
-function tvValues(e) {
+// число для поля формы — как в toForm (2,5 а не 2,50)
+const formNum = (x) => (LANG === "en" ? String(x) : String(x).replace(".", ","));
+function tvValues(e, bt = false) {
   const v = {};
   if (e.pair) v.pair = Conn.pairName(e.pair, S.lists.pair);
   if (e.dir) v.dir = e.dir;
@@ -1887,14 +1891,19 @@ function tvValues(e) {
     v.open = toInput(serial);
     v.session = sessionOf(serial);
   }
-  if (+e.entry > 0 && +e.sl > 0 && +e.tp > 0 && +e.entry !== +e.sl) v.rr = String(Math.round(Math.abs(e.tp - e.entry) / Math.abs(e.entry - e.sl) * 100) / 100);
+  if (e.rr > 0) v.rr = formNum(e.rr);
+  // результат и выход — только в бэктесте (на реальном счёте их даёт терминал)
+  if (bt) {
+    if (e.outcome === "Win" || e.outcome === "Lose") v.result = e.outcome;
+    if (e.exitChartMs != null) v.close = toInput(e.exitUtcMs != null ? msToSerial(e.exitUtcMs) : e.exitChartMs / 864e5 + 25569);
+  }
   return v;
 }
 
 function tvApply(ed, e) {
-  const f = ed.form, v = tvValues(e), isNew = !ed.n, touched = ed.touched || {};
+  const f = ed.form, v = tvValues(e, ed.mode === "bt"), isNew = !ed.n, touched = ed.touched || {};
   const filled = [], differs = [], prev = {};
-  for (const k of ["pair", "dir", "open", "rr"]) {
+  for (const k of ["pair", "dir", "open", "close", "result", "rr"]) {
     if (v[k] == null) continue;
     const cur = String(f[k] ?? "");
     const free = !cur || (isNew && !touched[k]);
@@ -1903,8 +1912,15 @@ function tvApply(ed, e) {
       if (k === "open" && f.sessionAuto !== false && v.session) { prev.session = f.session; f.session = v.session; filled.push("session"); }
     } else if (cur !== v[k]) differs.push(k);
   }
+  if (filled.some((k) => k === "result" || k === "rr")) { prev.profit = f.profit; tvProfit(ed); }
   ed.tv = { e, v, filled, differs, prev };
   saveDraft();
+}
+// Profit по результату и RR (если его не вписали руками)
+function tvProfit(ed) {
+  if (ed.profitManual) return;
+  const p = btProfit(ed.form);
+  if (p != null) ed.form.profit = formNum(num(p));
 }
 
 function tvBanner() {
@@ -1916,11 +1932,13 @@ function tvBanner() {
   const e = t.e, v = t.v;
   const when = v.open ? fmtDT(fromInput(v.open)) : "";
   const prec = e.how === "label" ? tr("точно — по подписи времени") : e.how === "axis" ? tr("по шкале времени, ±{n} мин", { n: e.approxMin || "?" }) : "";
-  const found = [v.pair, v.dir, when].filter(Boolean).join(" · ") || tr("на скриншоте не нашлось ни актива, ни входа");
+  const found = [v.pair, v.dir, when, v.result, e.outcome === "open" ? tr("ни тейк, ни стоп не задеты") : ""].filter(Boolean).join(" · ") || tr("на скриншоте не нашлось ни актива, ни входа");
+  const yearWarn = S.ed?.mode === "bt" && v.open && !e.dateSure;
   return `<div class="tv-banner ok">
     <div class="tv-b-h"><b>✦ ${tr("Со скриншота")}:</b> ${esc(found)}${prec ? ` <span class="muted">(${prec})</span>` : ""}</div>
     ${t.filled.length ? `<div>${tr("Заполнено")}: ${t.filled.map((k) => tr(TV_LABEL[k])).join(", ")}. ${tr("Проверь, особенно время.")}</div>` : ""}
-    ${t.differs.length ? `<div class="tv-diff">${tr("На скриншоте другое")}: ${t.differs.map((k) => `${tr(TV_LABEL[k])} — <b>${esc(k === "open" ? when : v[k])}</b>`).join(", ")}</div>` : ""}
+    ${t.differs.length ? `<div class="tv-diff">${tr("На скриншоте другое")}: ${t.differs.map((k) => `${tr(TV_LABEL[k])} — <b>${esc(k === "open" || k === "close" ? fmtDT(fromInput(v[k])) : v[k])}</b>`).join(", ")}</div>` : ""}
+    ${yearWarn ? `<div class="tv-diff">${tr("Года на скриншоте не видно — год и месяц взяты из даты снимка. Проверь дату.")}</div>` : ""}
     ${e.how === "axis" ? `<div class="muted tv-tip">${tr("Совет: перед скриншотом наведи перекрестие на свечу входа — TradingView покажет время на шкале, и оно прочитается до минуты.")}</div>` : ""}
     <div class="tv-b-act">
       ${t.differs.length ? `<button type="button" class="btn ghost sm" data-tvset="1">${tr("Подставить со скриншота")}</button>` : ""}
@@ -1936,11 +1954,242 @@ function tvClick(b) {
   if (b.dataset.tvclose) { ed.tv = null; renderEditor(); return true; }
   if (b.dataset.tvset) {
     for (const k of t.differs) { t.prev[k] = ed.form[k]; ed.form[k] = t.v[k]; t.filled.push(k); if (k === "open" && t.v.session) { t.prev.session = ed.form.session; ed.form.session = t.v.session; } }
+    if (t.differs.some((k) => k === "result" || k === "rr")) { if (!("profit" in t.prev)) t.prev.profit = ed.form.profit; tvProfit(ed); }
     t.differs = [];
     renderEditor();
     return true;
   }
   return false;
+}
+
+// ---------------- бэктест из скриншотов TradingView: несколько картинок -> сделки ----------------
+// Картинки читаются по одной (бесплатный Gemini не любит параллельные запросы), результат виден карточками,
+// поля можно поправить; «Записать» загружает картинки в Drive и добавляет строки в лист Backtest.
+const IMP = { items: null, running: false, seq: 0 };
+
+function impOpen() {
+  if (!tvOn()) { toast(tr("Сначала включи AI и «Читать скриншоты TradingView»: Настройки → Подключения и AI"), true); return; }
+  IMP.items ||= [];
+  renderJournal();
+}
+
+function lastRisk(mode) {
+  const last = [...trades(mode)].sort((a, b) => parseDT(b.v[0]) - parseDT(a.v[0])).find((x) => num(x.v[9]) > 0);
+  return last ? formNum(num(last.v[9])) : "";
+}
+
+function impAdd(list) {
+  if (!IMP.items) return;
+  for (const s of list) {
+    const id = ++IMP.seq;
+    IMP.items.push(s instanceof Blob
+      ? { id, file: s, name: s.name || tr("картинка"), thumb: URL.createObjectURL(s), status: "wait" }
+      : { id, url: s, name: s.replace(/^https?:\/\/(www\.)?/, ""), thumb: tvImage(s), status: "wait" });
+  }
+  renderJournal();
+  impRun();
+}
+
+async function impRun() {
+  if (IMP.running) return;
+  IMP.running = true;
+  try {
+    for (;;) {
+      const x = IMP.items?.find((i) => i.status === "wait");
+      if (!x) break;
+      x.status = "read"; impRedraw(x);
+      try {
+        const blob = x.file || await fetch(x.thumb).then((r) => { if (!r.ok) throw new Error(tr("картинка по ссылке недоступна")); return r.blob(); });
+        const [b64, img] = await Promise.all([blobToB64(blob), blobPixels(blob)]);
+        const raw = await TV.readShot({ b64, mime: blob.type || "image/png" }, AI.settings());
+        impFill(x, TV.entryFromShot(raw, new Date(), img));
+        x.status = "ok";
+      } catch (err) {
+        x.status = "err"; x.err = err.message || String(err);
+      }
+      if (!IMP.items) break; // панель закрыли
+      impRedraw(x);
+    }
+  } finally { IMP.running = false; }
+}
+
+// Сделка из распознанного: та же форма, что в карточке (идея и Risk как у новой сделки бэктеста)
+function impFill(x, e) {
+  const f = newForm(null);
+  f.risk = lastRisk("bt");
+  const v = tvValues(e, true);
+  for (const k of ["pair", "dir", "open", "close", "result", "rr", "session"]) if (v[k] != null) f[k] = v[k];
+  if (!v.open) { f.open = ""; f.session = ""; }
+  const p = btProfit(f); if (p != null) f.profit = formNum(num(p));
+  const row = TV.tfRow(e.tf);
+  x.tf = row ? ([...S.lists.tf, ...TF].find((t) => t.toLowerCase() === row.toLowerCase()) || row) : (S.lists.tf.includes("m15") ? "m15" : S.lists.tf[0] || "m15");
+  x.e = e; x.f = f;
+  impCheck(x);
+  x.pick = !!(f.pair && f.open) && !x.dup;
+}
+
+// Предупреждения и поиск дубля (та же пара, вход ±2 мин)
+function impCheck(x) {
+  const f = x.f, e = x.e, w = [];
+  if (!f.pair) w.push(tr("пара не прочитана — впиши"));
+  if (!f.open) w.push(tr("время входа не найдено — впиши"));
+  else if (e.how === "axis" && !x.touchedOpen) w.push(tr("время по шкале, ±{n} мин", { n: e.approxMin || "?" }));
+  if (f.open && !e.dateSure && !x.touchedOpen) w.push(tr("года на скриншоте не видно — проверь дату"));
+  if (!f.result) w.push(e.outcome === "open" ? tr("ни тейк, ни стоп не задеты — выбери результат") : tr("результат не понятен — выбери"));
+  if (!f.rr) w.push(tr("RR не прочитан"));
+  const o = fromInput(f.open);
+  x.dup = !!(f.pair && o !== "" && trades("bt").some((t) => String(t.v[3]) === f.pair && Math.abs(parseDT(t.v[0]) - o) <= 2 / 1440 + 1e-9));
+  if (x.dup) w.unshift(tr("такая сделка уже есть в бэктесте"));
+  x.warn = w;
+}
+
+function impCard(x) {
+  const f = x.f;
+  const st = x.status === "wait" ? `<span class="muted">${tr("в очереди")}</span>`
+    : x.status === "read" ? `<span class="ai-spin sm"></span> <span class="muted">${tr("читаю…")}</span>`
+    : x.status === "err" ? `<span class="neg">${tr("не прочитан")}</span>` : "";
+  const sel = (k, opts) => `<select data-impf="${x.id}:${k}">${["", ...opts].map((o) => `<option value="${o}" ${f[k] === o ? "selected" : ""}>${o || "—"}</option>`).join("")}</select>`;
+  return `<div class="card imp-card${x.dup ? " dup" : ""}${x.status === "ok" && !x.pick ? " off" : ""}" data-impcard="${x.id}">
+    <div class="imp-thumb">${x.thumb ? `<img src="${esc(x.thumb)}" alt="" data-impview="${x.id}">` : ""}</div>
+    <div class="imp-main">
+      <div class="imp-top">
+        ${x.status === "ok" ? `<input type="checkbox" data-imppick="${x.id}" ${x.pick ? "checked" : ""} aria-label="${tr("Записать")}">` : ""}
+        <span class="imp-name" title="${esc(x.name)}">${esc(x.name)}</span>${st}<span class="grow"></span>
+        <button type="button" class="chip-x" data-imprm="${x.id}" aria-label="${tr("Убрать")}">×</button>
+      </div>
+      ${x.status === "err" ? `<div class="hint neg">${esc(x.err)}</div><button type="button" class="link-btn" data-impretry="${x.id}">${tr("Прочитать ещё раз")}</button>` : ""}
+      ${x.status === "ok" ? `<div class="imp-fields">
+        <label class="imp-dt">Open<input type="datetime-local" data-impf="${x.id}:open" value="${esc(f.open)}"></label>
+        <label class="imp-dt">Close<input type="datetime-local" data-impf="${x.id}:close" value="${esc(f.close)}"></label>
+        <label>Pair<input data-impf="${x.id}:pair" value="${esc(f.pair)}" list="impPairs" autocapitalize="characters"></label>
+        <label>Direction${sel("dir", ["Long", "Short"])}</label>
+        <label>Result${sel("result", DEF.result)}</label>
+        <label>RR<input inputmode="decimal" data-impf="${x.id}:rr" value="${esc(f.rr)}"></label>
+        <label>Risk, %<input inputmode="decimal" data-impf="${x.id}:risk" value="${esc(f.risk)}"></label>
+        <div class="imp-pf"><span class="muted">Profit</span><b data-imppf="${x.id}">${impPf(f)}</b><span class="muted">${esc([f.session, x.tf].filter(Boolean).join(" · "))}</span></div>
+      </div>
+      <div class="imp-warn" data-impwarn="${x.id}">${impWarnHtml(x)}</div>` : ""}
+    </div></div>`;
+}
+const impPf = (f) => { const p = num(f.profit); return Number.isFinite(p) ? `<span class="${sgn(p)}">${fmtSigned(p)}%</span>` : "—"; };
+const impWarnHtml = (x) => (x.warn || []).map((w) => `<span class="imp-w">${esc(w)}</span>`).join("");
+
+function impPanel() {
+  const its = IMP.items, n = its.filter((x) => x.status === "ok" && x.pick).length;
+  const waiting = its.filter((x) => x.status === "wait" || x.status === "read").length;
+  return `<section class="panel imp-panel" id="impPanel">
+    <div class="imp-head"><h3>✦ ${tr("Сделки из скриншотов")}</h3><span class="grow"></span>
+      <button type="button" class="btn ghost sm" data-act="imp-close">${tr("Закрыть")}</button></div>
+    <div class="hint">${tr("Выбери скриншоты TradingView (можно сразу несколько), вставь Ctrl+V или ссылки tradingview.com/x/…. На графике нужен инструмент «Длинная/Короткая позиция» и свечи после входа. ИИ прочитает пару, направление, вход, RR и чем закончилась сделка — проверь и нажми «Записать».")}
+      ${activeIdea() ? " " + tr("Идея: {name}.", { name: esc(ideaName(activeIdea())) }) : ""}</div>
+    <div class="imp-add">
+      <label class="btn primary sm file">${tr("Выбрать скриншоты")}<input type="file" accept="image/*" multiple data-impfile="1" hidden></label>
+      <input class="imp-links" data-implinks="1" placeholder="${tr("или ссылки TradingView через пробел")}" enterkeyhint="done">
+      <button type="button" class="btn ghost sm" data-act="imp-links">${tr("Добавить")}</button>
+    </div>
+    <datalist id="impPairs">${S.lists.pair.map((p) => `<option value="${esc(p)}">`).join("")}</datalist>
+    <div class="imp-list">${its.map(impCard).join("")}</div>
+    ${its.length ? `<div class="cle-actions imp-foot">
+      <button type="button" class="btn primary" data-act="imp-save" ${n && !waiting ? "" : "disabled"}>${waiting ? tr("Читаю скриншоты: осталось {n}", { n: waiting }) : tr("Записать в бэктест: {n}", { n })}</button>
+      <span class="hint">${tr("POI, Entry и заметки допишешь потом в карточке сделки.")}</span></div>` : ""}
+  </section>`;
+}
+
+// Перерисовать одну карточку и кнопку записи, не трогая поля, в которых сейчас печатают
+function impRedraw(x) {
+  const card = document.querySelector(`[data-impcard="${x.id}"]`);
+  if (!card) return;
+  card.outerHTML = impCard(x);
+  impFoot();
+}
+function impFoot() {
+  const p = $("#impPanel"); if (!p) return;
+  const tmp = document.createElement("div"); tmp.innerHTML = impPanel();
+  const nf = tmp.querySelector(".imp-foot"), of = p.querySelector(".imp-foot");
+  if (nf && of) of.replaceWith(nf);
+}
+
+function impInput(el) {
+  const [id, k] = (el.dataset.impf || "").split(":");
+  const x = IMP.items?.find((i) => i.id === +id);
+  if (!x?.f) return;
+  const f = x.f;
+  f[k] = k === "pair" ? el.value.toUpperCase().trim() : el.value;
+  if (k === "open") { x.touchedOpen = true; f.session = autoSession(f); }
+  if (["result", "rr", "risk"].includes(k)) { const p = btProfit(f); f.profit = p == null ? "" : formNum(num(p)); }
+  const wasDup = x.dup;
+  impCheck(x);
+  if (x.dup && !wasDup) x.pick = false;
+  if (!x.dup && wasDup && f.pair && f.open) x.pick = true;
+  const pf = document.querySelector(`[data-imppf="${x.id}"]`); if (pf) pf.innerHTML = impPf(f);
+  const w = document.querySelector(`[data-impwarn="${x.id}"]`); if (w) w.innerHTML = impWarnHtml(x);
+  const cb = document.querySelector(`[data-imppick="${x.id}"]`); if (cb) cb.checked = !!x.pick;
+  document.querySelector(`[data-impcard="${x.id}"]`)?.classList.toggle("dup", !!x.dup);
+  impFoot();
+}
+
+function impClick(b) {
+  const d = b.dataset;
+  if (d.act === "imp-open") { impOpen(); return true; }
+  if (!IMP.items) return false;
+  if (d.act === "imp-close") {
+    if (IMP.items.some((x) => x.status === "ok" && x.pick) && !confirm(tr("Закрыть? Прочитанные сделки не записаны."))) return true;
+    IMP.items.forEach((x) => x.file && URL.revokeObjectURL(x.thumb));
+    IMP.items = null; renderJournal(); return true;
+  }
+  if (d.act === "imp-links") { const i = $("[data-implinks]"); impLinks(i?.value || ""); return true; }
+  if (d.act === "imp-save") { impSave(); return true; }
+  if (d.imprm) { IMP.items = IMP.items.filter((x) => x.id !== +d.imprm); renderJournal(); return true; }
+  if (d.impretry) { const x = IMP.items.find((i) => i.id === +d.impretry); if (x) { x.status = "wait"; impRedraw(x); impRun(); } return true; }
+  return false;
+}
+
+function impLinks(text) {
+  const urls = String(text).split(/\s+/).filter((s) => tvImage(s));
+  if (!urls.length) { if (text.trim()) toast(tr("Нужны ссылки на снимки TradingView: tradingview.com/x/…"), true); return; }
+  impAdd(urls);
+}
+
+async function impSave() {
+  const picked = IMP.items.filter((x) => x.status === "ok" && x.pick);
+  if (!picked.length || S.saving) return;
+  const bad = picked.find((x) => !x.f.pair || fromInput(x.f.open) === "");
+  if (bad) { toast(tr("У сделки «{n}» не указаны пара или время входа", { n: bad.name }), true); return; }
+  for (const x of picked) {
+    const v = formValues(x.f, S.lists.tf);
+    for (const k of NUM_COLS) if (typeof v[k] === "string" && v[k] !== "") { toast(tr("«{n}»: в поле {f} нужно число", { n: x.name, f: ["RR", "Risk", "Profit"][k - 8] }), true); return; }
+  }
+  const files = picked.filter((x) => x.file && !x.uploaded);
+  if (files.length && !auth.hasDrive()) { toast(tr("Нет доступа к Google Drive — при входе отметь доступ к файлам"), true); return; }
+  S.saving = true;
+  setBusy(true);
+  const btn = $('[data-act="imp-save"]'); if (btn) { btn.disabled = true; btn.textContent = tr("Сохраняю…"); }
+  try {
+    for (const x of picked) {
+      if (x.file && !x.uploaded) {
+        const ext = (x.file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+        x.uploaded = await api.uploadImage(x.file, `BT_${x.f.open.replace("T", "_").replace(":", "")}_${x.f.pair}_${x.tf}.${ext}`);
+      }
+      x.f.shots = { ...x.f.shots, [x.tf]: [x.uploaded || x.url] };
+    }
+    const rows = picked.map((x) => formValues(x.f, S.lists.tf));
+    const sheetId = S.books.bt?.sheetId ?? await api.ensureBacktest();
+    const last = trades("bt").reduce((m, t) => Math.max(m, t.n), 1);
+    await api.appendRows(api.BOOKS.bt, rows, sheetId, last);
+    const hdr = trades("bt").headers || [];
+    if (rows.some((v) => v[SCREENS]) && hdr[SCREENS] !== "Screens") await api.writeCells(api.BOOKS.bt, 1, [[SCREENS, "Screens"]]);
+    IMP.items = IMP.items.filter((x) => !picked.includes(x));
+    picked.forEach((x) => x.file && URL.revokeObjectURL(x.thumb));
+    if (!IMP.items.length) IMP.items = null;
+    toast(tr("Записано в бэктест: {n}", { n: picked.length }));
+    await reload();
+  } catch (e) {
+    handleErr(e);
+    impFoot();
+  } finally {
+    S.saving = false;
+    setBusy(false);
+  }
 }
 
 function renderStrategyEditor() {
@@ -2690,7 +2939,7 @@ function openViewer(url) {
   v.innerHTML = `<div class="vw-bar"><a class="btn ghost" href="${esc(url)}" target="_blank" rel="noopener">${tr("Открыть оригинал")}</a>
     <button class="btn ghost" data-close>${tr("Закрыть")}</button></div><div class="vw-img"><img alt=""></div>`;
   const img = $("img", v);
-  if (tv || directImage(url)) img.src = tv || url;
+  if (tv || directImage(url) || url.startsWith("blob:")) img.src = tv || url;
   else if (id) api.driveBlobUrl(id).then((u) => (img.src = u)).catch(() => toast(tr("Картинка недоступна — открой оригинал"), true));
   else { window.open(url, "_blank", "noopener"); return; }
   v.hidden = false;
@@ -2739,6 +2988,9 @@ function events() {
     if (btn && S.view === "lot" && lotClick(btn)) return;
     if (btn && S.view === "ai" && aiClick(btn)) return;
     if (btn && S.view === "settings" && settingsClick(btn)) return;
+    if (btn && S.view === "journal" && impClick(btn)) return;
+    const iv = e.target.closest("[data-impview]");
+    if (iv) { const x = IMP.items?.find((i) => i.id === +iv.dataset.impview); if (x) openViewer(x.thumb); return; }
     if (btn?.dataset.act === "ai-open") { setView("ai"); return; }
     if (btn?.dataset.aiprov) { AI.saveSettings({ ...AI.settings(), provider: btn.dataset.aiprov }); renderConnect(); if (btn.dataset.aiprov === "gemini" && !AI.settings().gmodels.length) aiLoadGeminiModels(); return; }
     if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
@@ -2755,6 +3007,7 @@ function events() {
   });
   $("#view").addEventListener("input", (e) => {
     if (e.target.dataset.rnote && S.run) { S.run.note = e.target.value; saveRun(); }
+    if (e.target.dataset.impf) { impInput(e.target); return; }
     if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
     if (e.target.dataset.cxf) { CX.form[e.target.dataset.cxf] = e.target.value; return; }
     if (S.view === "lot" && lotInput(e.target)) return;
@@ -2786,6 +3039,9 @@ function events() {
     }
     if (e.target.dataset.cxtz && CX.report) { CX.report.tz = e.target.value; return; }
     if (e.target.dataset.cxfile && e.target.files?.[0]) { cxReadReport(e.target.files[0]); e.target.value = ""; return; }
+    if (e.target.dataset.impf) { impInput(e.target); return; }
+    if (e.target.dataset.imppick) { const x = IMP.items?.find((i) => i.id === +e.target.dataset.imppick); if (x) { x.pick = e.target.checked; impRedraw(x); } return; }
+    if (e.target.dataset.impfile) { const fl = [...(e.target.files || [])]; e.target.value = ""; if (fl.length) impAdd(fl); return; }
     if (e.target.dataset.cxpick && CX.preview) { CX.preview.items[+e.target.dataset.cxpick].pick = e.target.checked; renderConnect(); return; }
     const files = [...(e.target.files || [])];
     if (!files.length) return;
@@ -2793,6 +3049,18 @@ function events() {
     if (e.target.dataset.stmissing) stUpload(files, "missing");
     if (e.target.dataset.stbimg && S.stB) stbUpload(files, e.target.dataset.stbimg);
     e.target.value = "";
+  });
+  $("#view").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.dataset.implinks) { e.preventDefault(); impLinks(e.target.value); }
+  });
+  // Ctrl+V картинок и ссылок в открытую панель «Сделки из скриншотов»
+  document.addEventListener("paste", (e) => {
+    if (S.ed || S.view !== "journal" || !isBT() || !IMP.items) return;
+    const imgs = [...(e.clipboardData?.items || [])].filter((i) => i.type.startsWith("image/")).map((i) => i.getAsFile()).filter(Boolean);
+    if (imgs.length) { e.preventDefault(); impAdd(imgs); return; }
+    if (e.target.dataset?.implinks) return; // ссылки в поле — по Enter / «Добавить»
+    const text = e.clipboardData?.getData("text") || "";
+    if (text.split(/\s+/).some((u) => tvImage(u))) { e.preventDefault(); impLinks(text); }
   });
   $("#viewer").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
