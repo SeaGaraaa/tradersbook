@@ -23,6 +23,7 @@ export function applyStatic(root = document) {
 }
 
 export const EN = {
+  "Нет права записи в эту Google-таблицу. Нажми ⟳ — приложение откроет твою таблицу.": "No permission to edit this Google Sheet. Tap ⟳ — the app will open your own sheet.",
   // стратегия: редактор блоков (notion.js)
   "Страница": "Page",
   "Отдельная страница внутри стратегии": "Separate page inside the strategy",

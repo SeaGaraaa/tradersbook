@@ -326,6 +326,16 @@ async function canOpen(id) {
   }
 }
 
+// Может ли пользователь писать в таблицу: открыть мало — к чужой таблице бывает доступ только на просмотр,
+// и тогда любое сохранение падает с «The caller does not have permission». null — Drive не сказал (не проверить).
+async function canEdit(id) {
+  try { return !!(await json(`${DRIVE}/${id}?fields=capabilities(canEdit)`)).capabilities?.canEdit; } catch (e) {
+    if (e instanceof AuthError) throw e;
+    return null;
+  }
+}
+const usable = async (id) => (await canOpen(id)) && (await canEdit(id)) !== false;
+
 // Кто вошёл: адрес Google-аккаунта из Drive (about), в коде сравнивается только его SHA-256.
 async function accountHash() {
   const r = await json(`${DRIVE.replace(/\/files$/, "")}/about?fields=user(emailAddress)`);
@@ -339,21 +349,26 @@ async function accountHash() {
 // Таблица пользователя. Таблица владельца из config.js открывается ТОЛЬКО его аккаунтам (ownerEmailSha256),
 // даже если у других случайно есть к ней доступ по ссылке. Порядок: таблица этого аккаунта, запомненная
 // на устройстве → (только владельцу) таблица из config → таблица приложения в Drive → иначе новая.
+let SHEET_KEY = "";
+// Таблица отказала в записи — при следующем входе подобрать заново (свою или новую).
+export function forgetSheet() { if (SHEET_KEY) lsDel(SHEET_KEY); }
+
 export async function resolveSpreadsheet(lang = "ru") {
   lsDel("tj.sheet"); // старый общий ключ (до разделения по аккаунтам)
   const who = await accountHash();
   const key = "tj.sheet." + who.slice(0, 16);
   const isOwner = (CONFIG.ownerEmailSha256 || []).includes(who);
+  SHEET_KEY = key;
   const use = (id, created = false) => { ID = id; lsSet(key, id); return { id, created, owner: isOwner }; };
   const cached = lsGet(key);
-  if (cached && (cached !== CONFIG.spreadsheetId || isOwner) && await canOpen(cached)) return use(cached);
+  if (cached && (cached !== CONFIG.spreadsheetId || isOwner) && await usable(cached)) return use(cached);
   if (isOwner && CONFIG.spreadsheetId && await canOpen(CONFIG.spreadsheetId)) return use(CONFIG.spreadsheetId);
   const found = await json(`${DRIVE}?` + new URLSearchParams({
-    q: `appProperties has { key='${APP_PROP}' and value='1' } and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
+    q: `appProperties has { key='${APP_PROP}' and value='1' } and 'me' in owners and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
     fields: "files(id,createdTime)", orderBy: "createdTime", spaces: "drive",
   }));
   const own = found.files?.[0]?.id;
-  if (own && own !== CONFIG.spreadsheetId && await canOpen(own)) return use(own);
+  if (own && own !== CONFIG.spreadsheetId && await usable(own)) return use(own);
   return use(await createSpreadsheet(lang), true);
 }
 
