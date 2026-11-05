@@ -1186,8 +1186,10 @@ body.nb-dragmode, body.nb-dragmode * { cursor: grabbing !important; user-select:
 .nb-bullet, .nb-num { margin-top: 3px; }
 .nb-p + .nb-bullet, .nb-p + .nb-num, .nb-p + .nb-todo { margin-top: 8px; }
 .nb-bullet + .nb-p, .nb-num + .nb-p, .nb-todo + .nb-p { margin-top: 12px; }
-.nb-h1 { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line); }
-.nb-doc > .nb-h1:first-child { padding-top: 0; border-top: 0; }
+.nb-h1 { margin-top: 56px; }
+/* линия перед разделом — обычный блок «Разделитель» (с v77), её можно удалить и перенести */
+.nb-divider:has(+ .nb-h1) { margin-top: 40px; }
+.nb-divider + .nb-h1 { margin-top: 14px; }
 .nb-h2 { margin-top: 36px; }
 .nb-h3 { margin-top: 24px; }
 .nb-h1 + .nb-b, .nb-h2 + .nb-b, .nb-h3 + .nb-b { margin-top: 6px; }
@@ -1204,8 +1206,9 @@ body.nb-dragmode, body.nb-dragmode * { cursor: grabbing !important; user-select:
 .nb-read p { margin: 8px 0; }
 .nb-read .st-list { margin: 8px 0 12px; }
 .nb-read .st-list li { margin: 4px 0; }
-.nb-read .st-h1 { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line); }
-.nb-read .st-h1:first-child { padding-top: 0; border-top: 0; }
+.nb-read .st-h1 { margin-top: 56px; }
+.nb-read .st-hr:has(+ .st-h1) { margin-top: 40px; }
+.nb-read .st-hr + .st-h1 { margin-top: 22px; }
 .nb-read .st-h2 { margin-top: 36px; }
 .nb-read .st-h3 { margin-top: 24px; }
 .nb-read .st-fig { margin: 26px 0 0; }
@@ -1214,12 +1217,10 @@ body.nb-dragmode, body.nb-dragmode * { cursor: grabbing !important; user-select:
 .nb-read .st-fig + .st-fig { margin-top: 30px; }
 .nb-read .st-callout { margin: 14px 0; }
 @media (max-width: 760px) {
-  .nb-h1, .nb-read .st-h1 { margin-top: 44px; padding-top: 18px; }
+  .nb-h1, .nb-read .st-h1 { margin-top: 44px; }
+  .nb-divider:has(+ .nb-h1), .nb-read .st-hr:has(+ .st-h1) { margin-top: 30px; }
   .nb-image + .nb-p > .nb-row > .nb-text, .nb-read .st-fig + p { font-size: 13.5px; }
 }
-.nb-h1 > .nb-gut { top: 31px; }
-.nb-doc > .nb-h1:first-child > .nb-gut { top: 9px; }
-@media (max-width: 760px) { .nb-h1 > .nb-gut { top: 25px; } }
 
 /* ---------- стратегия: страницы внутри стратегии (v76) ---------- */
 .nb-subpage { margin-top: 4px; }
