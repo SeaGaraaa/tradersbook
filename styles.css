@@ -278,6 +278,11 @@ input[type="datetime-local"] { min-width: 0; -webkit-appearance: none; appearanc
 .chip.add { color: var(--accent); border-style: dashed; }
 .chip.edit { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 13px; border-radius: 999px; padding: 3px 4px 3px 12px; }
 .chip-x { width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--panel2); color: var(--lose); font-size: 15px; line-height: 1; cursor: pointer; }
+.chip.edit { padding-left: 4px; }
+.chip-mv { width: 22px; height: 22px; border-radius: 50%; border: 0; background: transparent; color: var(--muted); font-size: 17px; line-height: 1; cursor: pointer; padding: 0; }
+.chip-mv:hover:not(:disabled) { background: var(--panel2); color: var(--text); }
+.chip-mv:disabled { opacity: .25; cursor: default; }
+.chip-n { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-right: 5px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; }
 .chip-add { display: inline-flex; gap: 6px; flex: 1 1 220px; }
 .chip-add input { padding: 6px 10px; font-size: 14px; }
 .ed-body textarea { font-weight: 400; font-size: 15px; }

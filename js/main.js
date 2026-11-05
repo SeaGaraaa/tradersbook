@@ -799,18 +799,24 @@ function seg(name, options, cur) {
     `<button type="button" data-val="${esc(o)}" class="${cur === o ? "on " + (resClass(o) || o.toLowerCase()) : ""}">${esc(o)}</button>`).join("")}</div>`;
 }
 
+// Пункт списка в режиме правки: стрелки двигают его в списке, × убирает.
+function editChip(kind, p, i, n) {
+  const mv = (d, sym, lbl) => `<button type="button" class="chip-mv" data-mv="${kind}" data-val="${esc(p)}" data-dir="${d}"${(d < 0 ? i === 0 : i === n - 1) ? " disabled" : ""} aria-label="${tr(lbl)}">${sym}</button>`;
+  return `<span class="chip edit">${mv(-1, "‹", "Левее")}${esc(p)}${mv(1, "›", "Правее")}<button type="button" class="chip-x" data-rm="${kind}" data-val="${esc(p)}" aria-label="${tr("Убрать {x}", { x: esc(p) })}">×</button></span>`;
+}
+
 // Поле-список (POI — несколько значений, Entry и Idea — одно) с режимом правки самого списка.
 function listField(kind, label, items, selected) {
   const manage = S.ed.manage === kind;
   let chips;
   if (manage) {
-    chips = items.map((p) => `<span class="chip edit">${esc(p)}<button type="button" class="chip-x" data-rm="${kind}" data-val="${esc(p)}" aria-label="${tr("Убрать {x}", { x: esc(p) })}">×</button></span>`).join("")
+    chips = items.map((p, i) => editChip(kind, p, i, items.length)).join("")
       + `<span class="chip-add"><input data-add="${kind}" placeholder="${tr({ idea: "Новая идея", pair: "Новая пара, например USDJPY" }[kind] || "Новая запись")}" enterkeyhint="done" maxlength="${kind === "idea" ? 80 : 40}"${kind === "pair" ? ' autocapitalize="characters"' : ""}>`
       + `<button type="button" class="btn sm" data-addbtn="${kind}">${tr("Добавить")}</button></span>`;
   } else {
     // выбранное, но удалённое из списка значение всё равно видно в этой сделке
     chips = [...new Set([...items, ...selected])].map((p) =>
-      `<button type="button" class="chip ${selected.includes(p) ? "on" : ""}${items.includes(p) ? "" : " stale"}" data-pick="${kind}" data-val="${esc(p)}">${esc(p)}</button>`).join("")
+      `<button type="button" class="chip ${selected.includes(p) ? "on" : ""}${items.includes(p) ? "" : " stale"}" data-pick="${kind}" data-val="${esc(p)}">${selected.length > 1 && selected.includes(p) ? `<b class="chip-n">${selected.indexOf(p) + 1}</b>` : ""}${esc(p)}</button>`).join("")
       || `<span class="muted">${tr("Список пуст — нажми «Изменить список»")}</span>`;
   }
   return `<div class="field${manage ? " managing" : ""}${kind === "idea" ? " idea-field" : ""}">
@@ -2709,7 +2715,7 @@ function shotsBlock() {
   const head = `<div class="field-h shots-h"><span>${tr("Скриншоты")} <span class="muted">${tr("— ссылка TradingView, фото или Ctrl+V картинки в поле")}</span></span>
     <button type="button" class="link-btn" data-manage="tf">${manage ? tr("Готово") : tr("Изменить список")}</button></div>`;
   const mgr = manage ? `<div class="field managing"><div class="chips">
-      ${S.lists.tf.map((p) => `<span class="chip edit">${esc(p)}<button type="button" class="chip-x" data-rm="tf" data-val="${esc(p)}" aria-label="${tr("Убрать {x}", { x: esc(p) })}">×</button></span>`).join("")}
+      ${S.lists.tf.map((p, i, a) => editChip("tf", p, i, a.length)).join("")}
       <span class="chip-add"><input data-add="tf" placeholder="${tr("Новый таймфрейм, например H2 или M30")}" enterkeyhint="done" maxlength="12">
       <button type="button" class="btn sm" data-addbtn="tf">${tr("Добавить")}</button></span></div>
       <div class="hint">${tr("Список строк общий для всех сделок и сохраняется в таблицу (лист {sheet}, колонка E).", { sheet: esc(CONFIG.listsSheet) })}
@@ -2882,6 +2888,12 @@ function editorEvents() {
     }
     if (b.dataset.manage) { S.ed.manage = S.ed.manage === b.dataset.manage ? null : b.dataset.manage; renderEditor(); $(`input[data-add="${b.dataset.manage}"]`)?.focus(); return; }
     if (b.dataset.addbtn) return addToList(b.dataset.addbtn);
+    if (b.dataset.mv) {
+      const kind = b.dataset.mv, list = [...S.lists[kind]], i = list.indexOf(b.dataset.val), j = i + +b.dataset.dir;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      return updateList(kind, list);
+    }
     if (b.dataset.rm) {
       const kind = b.dataset.rm, val = b.dataset.val;
       if (!confirm(tr("Убрать «{v}» из списка {l}?", { v: val, l: tr(LIST_LABEL[kind]) }))) return;
