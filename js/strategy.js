@@ -9,10 +9,10 @@
 //   ---                 разделитель
 import { esc, driveId } from "./util.js";
 
-function inline(s) {
+export function inline(s) {
   const keep = [];
   const stash = (html) => `\u0000${keep.push(html) - 1}\u0000`;
-  let t = String(s).replace(/\\([\\`*_[\]()#>!-])/g, (_, c) => stash(esc(c))); // \> \: и т. п.
+  let t = String(s).replace(/\\([\\`*_[\]()#>!.-])/g, (_, c) => stash(esc(c))); // \> \: и т. п.
   t = t.replace(/\\:/g, ":");
   t = t.replace(/`([^`]+)`/g, (_, c) => stash(`<code>${esc(c)}</code>`));
   t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, txt, url) => stash(`<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>`));

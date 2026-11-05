@@ -6,14 +6,13 @@ import { TF, NUM_COLS, IDEA, SCREENS, CHECK, ACCOUNT, toForm, formValues, diff }
 import * as CL from "./checklist.js";
 import { exportPNG, exportPDF, exportAi } from "./export.js";
 import * as St from "./strategy.js";
-import * as SB from "./stbuilder.js";
+import * as NB from "./notion.js";
 import * as Conn from "./connect.js";
 import * as News from "./news.js";
 import * as Lot from "./lot.js";
 import * as AI from "./ai.js";
 import * as TV from "./tvread.js";
 import { sortable } from "./sortable.js";
-import * as SO from "./stoutline.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, weekdayName, weekdayOf, monthKey, fromInput, sameMinute, sessionOf,
@@ -115,7 +114,7 @@ const S = {
   run: null, // текущий (несохранённый) чек-лист на вкладке «Чек-лист»
   runs: [], runsSheetId: null, // сохранённые чек-листы (лист Checklists)
   clDraft: null, // правка шаблона чек-листа
-  strategy: null, strategyData: "", stB: null, stBOrig: "", stEdit: null, stPreview: false, // торговая стратегия (лист Strategy); stEdit — текст в правке
+  strategy: null, strategyData: "", stDirty: false, // торговая стратегия (лист Strategy); stDirty — правка ещё не сохранена
   f: { live: emptyFilter(), bt: emptyFilter() },
   btIdea: lsGet("tj.btIdea") || "", // идея, выбранная на Dashboard бэктеста
   account: lsGet("tj.account") || "", // счёт реального журнала: "" — все, "_none" — без счёта
@@ -233,8 +232,9 @@ async function reload() {
     S.lists = buildLists(data);
     S.runs = data.runs.list;
     S.runsSheetId = data.runs.sheetId;
-    S.strategy = data.strategy;
+    if (!S.stDirty) { S.strategy = data.strategy; STL.base = data.strategy ?? ""; }
     S.strategyData = data.strategyData || "";
+    stRestoreDraft(data.strategy ?? "");
     CL.load(data.lists.checklist);
     if (data.lists.news) News.setFilter(data.lists.news);
     if (data.lists.lot) ltLoad(data.lists.lot);
@@ -288,6 +288,7 @@ function pickIdea(name) {
 }
 
 function render() {
+  if (S.view !== "strategy" && STL.ed) { STL.ed.destroy(); STL.ed = null; stFlush(); }
   document.body.classList.toggle("bt", isBT() && !["checklist", "strategy", "news", "connect", "lot", "settings"].includes(S.view));
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === S.view));
   $("#apiBtn")?.classList.toggle("on", S.view === "connect");
@@ -918,46 +919,133 @@ function renderEditor() {
 }
 
 // ---------- вкладка «Стратегия»: своя у каждого пользователя (лист Strategy его таблицы) ----------
+// Страница из блоков, как в Notion (js/notion.js): правится прямо на месте и сохраняется сама.
+const STL = { ed: null, md: null, base: "", t: 0, saving: false, again: false, status: "" };
+const stLocked = () => lsGet("tj.stlock") === "1";
 
 function renderStrategy() {
-  const md = S.strategy;
-  if (S.stB) return renderStrategyBuilder();
-  if (S.stEdit != null) return renderStrategyEditor();
-  if (!md || !md.trim()) {
-    $("#view").innerHTML = `<div class="st-page"><section class="panel st-empty">
-      <img src="icons/tb-icon-192.png" alt="" class="st-empty-logo">
-      <h2>${tr("Твоя торговая стратегия")}</h2>
-      <p class="muted">${tr("Здесь хранятся правила твоей торговли: пары, риск, сетапы, вход, стоп и тейк. Стратегия лежит в твоей Google-таблице и видна только тебе.")}</p>
-      <div class="cle-actions st-empty-actions">
-        <button type="button" class="btn primary" data-act="st-build">${tr("Заполнить по разделам")}</button>
-        <button type="button" class="btn ghost" data-act="st-template">${tr("Писать текстом")}</button>
-      </div>
-      <div class="hint st-empty-hint">${tr("По разделам проще: пары, риск, время, сетапы — у каждого свои поля с подсказками. Текстом — для тех, кто привык к Markdown.")}
-      </div>
-    </section></div>`;
-    return;
-  }
+  const md = S.strategy || "";
+  const locked = stLocked();
+  // редактор уже открыт с этим текстом — не пересобирать, иначе пропадёт каретка
+  if (STL.ed && !locked && STL.md === md && $("#view .nb-page")) return;
+  STL.ed?.destroy(); STL.ed = null;
   const r = St.render(md);
-  $("#view").innerHTML = `<div class="st-page">
-    <header class="panel st-head">
-      <img src="icons/tb-icon-192.png" alt="" class="st-logo">
-      <div class="st-title"><h1>${tr("Торговая стратегия")}</h1><div class="muted">Trader'sBook</div></div>
+  $("#view").innerHTML = `<div class="nb-page ${locked ? "locked" : ""}">
+    <div class="nb-top">
+      <span class="nb-status" id="stStatus">${stStatusHtml()}</span>
       <span class="grow"></span>
-      <button type="button" class="btn ghost sm" data-act="st-expand">${tr("Развернуть всё")}</button>
-      <button type="button" class="btn primary sm" data-act="st-edit">${tr("Изменить")}</button>
+      ${md.trim() || locked ? `<button type="button" class="nb-tbtn" data-act="st-lock">${locked ? tr("✎ Править") : tr("🔒 Только чтение")}</button>` : ""}
+    </div>
+    <header class="nb-head">
+      <img src="icons/tb-icon-192.png" alt="" class="nb-logo">
+      <h1 class="nb-title">${tr("Торговая стратегия")}</h1>
+      ${locked ? "" : `<div class="nb-sub">${tr("Пиши прямо на странице. «/» — блоки, ⠿ — перетащить или меню блока. Сохраняется само.")}</div>`}
     </header>
-    ${r.missing.length ? `<div class="panel st-missing">
+    ${r.missing.length ? `<div class="nb-missing">
       <div><b>${tr("Картинок не загружено: {n}", { n: r.missing.length })}</b>
         <div class="muted">${tr("Нажми «Загрузить картинки» и выбери файлы — каждый встанет на своё место по имени ({ex}).", { ex: esc(r.missing[0]) })}</div></div>
       <label class="btn primary sm file">${tr("Загрузить картинки")}<input type="file" accept="image/*" multiple data-stmissing="1" hidden></label>
     </div>` : ""}
-    <div class="st-layout">
-      <nav class="st-toc">${r.toc.map((x) => `<a href="#${x.id}" data-sttoc="${x.id}">${esc(x.title)}</a>`).join("")}</nav>
-      <article class="panel st-body">${r.html}</article>
+    ${!md.trim() && !locked ? `<div class="nb-start" id="stStart">${tr("Пустая страница — начни писать ниже или")} <button type="button" class="link-btn" data-act="st-template">${tr("возьми шаблон")}</button></div>` : ""}
+    <div class="nb-layout">
+      <div class="nb-main">${locked ? `<article class="st-body nb-read">${r.html || `<p class="muted">${tr("Стратегия пока пустая")}</p>`}</article>` : `<div class="nb-ed" id="stEd"></div>`}</div>
+      <nav class="nb-toc" id="stToc">${locked ? stTocHtml(r.toc.map((x) => ({ id: x.id, text: x.title })), "sttoc") : ""}</nav>
     </div>
+    ${locked ? "" : `<div class="nb-bar" id="stBar">
+      <button type="button" data-nbbar="add">＋ ${tr("Блок")}</button>
+      <button type="button" data-nbbar="menu">⠿ ${tr("Тип")}</button>
+      <button type="button" data-nbbar="bold"><b>B</b></button>
+      <button type="button" data-nbbar="out" aria-label="${tr("Левее")}">⇤</button>
+      <button type="button" data-nbbar="in" aria-label="${tr("Правее")}">⇥</button>
+      <button type="button" data-nbbar="up" aria-label="${tr("Выше")}">↑</button>
+      <button type="button" data-nbbar="down" aria-label="${tr("Ниже")}">↓</button>
+    </div>`}
   </div>`;
-  hydrateThumbs($("#view"));
+  STL.md = md;
+  if (locked) hydrateThumbs($("#view"));
+  else {
+    STL.ed = NB.mount($("#stEd"), {
+      md, onChange: stChanged, upload: stUploadInsert, hydrate: hydrateThumbs,
+      onHeadings: (list) => { const n = $("#stToc"); if (n) n.innerHTML = stTocHtml(list, "nbtoc"); },
+    });
+  }
   if (r.missing.length && !S.stAutoTried && auth.hasDrive()) { S.stAutoTried = true; stAutoImport(); }
+}
+
+function stTocHtml(list, attr) {
+  if (list.length < 2) return "";
+  return `<div class="nb-toc-t">${tr("Содержание")}</div>` + list.map((h) =>
+    `<a href="#" data-${attr}="${h.id}">${esc(String(h.text).replace(/\\(.)/g, "$1").replace(/[*`]/g, ""))}</a>`).join("");
+}
+
+// ---------- автосохранение ----------
+function stStatusHtml() {
+  const k = STL.status;
+  if (k === "saving") return `<span class="muted">${tr("Сохраняю…")}</span>`;
+  if (k === "edit") return `<span class="muted">${tr("Есть изменения…")}</span>`;
+  if (k === "saved") return `<span class="nb-ok">✓ ${tr("Сохранено")}</span>`;
+  if (k === "error") return `<span class="neg">${tr("Не сохранено")}</span> <button type="button" class="link-btn" data-act="st-retry">${tr("Повторить")}</button>`;
+  return "";
+}
+function stStatus(k) { STL.status = k; const el = $("#stStatus"); if (el) el.innerHTML = stStatusHtml(); }
+
+function stChanged(md) {
+  if (md === (S.strategy || "")) return;
+  S.strategy = md; STL.md = md; S.stDirty = true;
+  lsSet("tj.stdraft", JSON.stringify({ base: STL.base, md }));
+  if (md.trim()) $("#stStart")?.remove();
+  stStatus("edit");
+  clearTimeout(STL.t);
+  STL.t = setTimeout(stFlush, 1000);
+}
+
+async function stFlush() {
+  clearTimeout(STL.t);
+  if (!S.stDirty) return;
+  if (STL.saving) { STL.again = true; return; }
+  const md = S.strategy || "";
+  STL.saving = true; STL.again = false;
+  stStatus("saving");
+  let ok = false;
+  try {
+    await api.saveStrategy(md, "");
+    ok = true;
+    S.strategyData = ""; STL.base = md;
+    if ((S.strategy || "") === md) { S.stDirty = false; lsDel("tj.stdraft"); stStatus("saved"); }
+  } catch (e) {
+    stStatus("error");
+    handleErr(e);
+  } finally {
+    STL.saving = false;
+    if (ok && S.stDirty) STL.t = setTimeout(stFlush, 800);
+  }
+}
+
+// черновик в браузере: если вход истёк посреди правки — после возврата правка восстановится и сохранится
+function stRestoreDraft(server) {
+  let d = null;
+  try { d = JSON.parse(lsGet("tj.stdraft") || "null"); } catch { /* битый черновик */ }
+  if (!d || S.stDirty) return;
+  if (d.md === server) { lsDel("tj.stdraft"); return; }
+  if ((d.base ?? "") !== server) { lsDel("tj.stdraft"); return; } // страницу уже поменяли в другом месте
+  S.strategy = d.md; STL.md = null; S.stDirty = true;
+  setTimeout(stFlush, 300);
+  toast(tr("Восстановил несохранённую правку стратегии"));
+}
+
+async function stUploadInsert(files) {
+  if (!auth.hasDrive()) { toast(tr("Нет доступа к Google Drive — при входе отметь доступ к файлам"), true); return []; }
+  setBusy(true);
+  const urls = [];
+  try {
+    for (const f of files) urls.push(await api.uploadImage(f, `strategy_${f.name}`));
+    toast(tr("Загружено картинок: {n}", { n: urls.length }));
+  } catch (e) {
+    handleErr(e);
+  } finally {
+    setBusy(false);
+  }
+  return urls;
 }
 
 // Картинки, заранее положенные в скрытый лист StrategyImages, грузятся в Drive сами — один раз.
@@ -965,191 +1053,16 @@ async function stAutoImport() {
   try {
     const files = await api.pendingImages();
     if (!files.length) return;
-    await stUpload(files, "missing");
+    await stUpload(files);
     if (!St.render(S.strategy).missing.length) await api.dropPendingImages();
   } catch (e) {
     handleErr(e);
   }
 }
 
-// ---------------- конструктор стратегии ----------------
-const STB_HINT = {
-  principles: "Например:\nТоргую только сетапы с этой страницы\nНе отыгрываюсь после убытка",
-  time: "Например:\nЛондон 10:00–13:00 (UTC+3)\nНе вхожу в первые 15 минут сессии\nНе торгую за 15 минут до важных новостей",
-  manage: "Например:\nПри +1R переношу стоп в безубыток\nЗакрываю сделку до конца сессии",
-};
-
-function renderStrategyBuilder() {
-  const d = S.stB;
-  const preview = S.stPreview;
-  const r = preview ? St.render(SB.toMarkdown(d)) : null;
-  const area = (path, value, ph, rows = 3) =>
-    `<textarea class="stb-area" rows="${rows}" data-stb="${path}" placeholder="${esc(ph)}">${esc(value || "")}</textarea>`;
-  const field = (label, help, html) => `<label class="stb-field"><span class="stb-label">${label}${help ? ` <span class="muted">${help}</span>` : ""}</span>${html}</label>`;
-  const grip = `<span class="sort-grip" data-handle title="${tr("Зажми и перетащи, чтобы поменять порядок")}">⠿</span>`;
-  const tools = (path, i) => `<span class="stb-tools">
-      <button type="button" class="chip-x" data-stbdel="${path}|${i}" aria-label="${tr("Удалить")}">×</button></span>`;
-  const images = (path, list) => `<div class="stb-imgs">
-      ${(list || []).map((u, j) => `<span class="stb-thumb" data-sort="${path}" data-i="${j}">${St.imageHtml(u)}<button type="button" class="chip-x" data-stbimgdel="${path}|${j}" aria-label="${tr("Удалить")}">×</button></span>`).join("")}
-      <label class="btn ghost sm file">${tr("+ картинка")}<input type="file" accept="image/*" multiple data-stbimg="${path}" hidden></label></div>`;
-
-  const body = (s, i) => {
-    const p = `sections.${i}`;
-    if (s.kind === "list") {
-      return area(`${p}.text`, s.text, tr(STB_HINT[s.hint] || "Каждая строка — отдельный пункт"), 4) + images(`${p}.images`, s.images);
-    }
-    if (s.kind === "pairs") {
-      return `<div class="chips">${S.lists.pair.map((x) => `<button type="button" class="chip ${s.pairs.includes(x) ? "on" : ""}" data-stbpair="${i}|${esc(x)}">${esc(x)}</button>`).join("")}
-        <button type="button" class="chip add" data-stbpairadd="${i}">${tr("+ пара")}</button></div>
-        ${area(`${p}.text`, s.text, tr("Заметки по парам (не обязательно)"), 2)}`;
-    }
-    if (s.kind === "risk") {
-      const num = (k, label, ph) => field(label, "", `<input data-stb="${p}.${k}" value="${esc(s[k] || "")}" placeholder="${ph}" inputmode="decimal">`);
-      return `<div class="stb-grid">
-          ${num("risk", tr("Риск на сделку, %"), "0,5")}
-          ${num("stops", tr("Стопов в день, максимум"), "2")}
-          ${num("trades", tr("Сделок в день, максимум"), "3")}
-          ${num("rr", tr("Минимальный RR, 1 к …"), "2")}
-        </div>
-        ${field(tr("Другие правила риска"), "", area(`${p}.text`, s.text, tr("Например: после 3 стопов подряд риск 0,25%"), 2))}`;
-    }
-    return `${(s.setups || []).map((st, j) => {
-      const q = `${p}.setups.${j}`;
-      return `<div class="stb-setup" data-sort="${p}.setups" data-i="${j}">
-        <div class="stb-head">${grip}<input class="stb-name" data-stb="${q}.name" value="${esc(st.name)}" placeholder="${tr("Название сетапа")}">${tools(`${p}.setups`, j)}</div>
-        ${field(tr("Когда появляется"), tr("— контекст, время, что делает цена"), area(`${q}.when`, st.when, tr("Например:\nАзия в диапазоне\nЛондон снимает максимум Азии"), 3))}
-        <div class="stb-grid stb-grid-3">
-          ${field(tr("Вход"), "", area(`${q}.entry`, st.entry, tr("Например: слом структуры на M5, вход от отката"), 2))}
-          ${field("Stop Loss", "", area(`${q}.sl`, st.sl, tr("Например: за максимум манипуляции"), 2))}
-          ${field("Take Profit", "", area(`${q}.tp`, st.tp, tr("Например: минимум Азии"), 2))}
-        </div>
-        ${field(tr("Когда сделки нет"), tr("— сетап отменяется"), area(`${q}.inval`, st.inval, tr("Например: цена ушла дальше 30 пунктов от открытия дня"), 2))}
-        ${images(`${q}.images`, st.images)}
-      </div>`;
-    }).join("")}
-      <button type="button" class="btn ghost sm" data-stbaddsetup="${i}">${tr("+ сетап")}</button>`;
-  };
-
-  const kinds = new Set(d.sections.map((s) => s.kind));
-  const addBtn = (kind, label) => `<button type="button" class="btn ghost sm" data-stbadd="${kind}">${label}</button>`;
-  $("#view").innerHTML = `<div class="st-page stb-page">
-    <header class="panel st-head">
-      <img src="icons/tb-icon-192.png" alt="" class="st-logo">
-      <div class="st-title"><h1>${tr("Торговая стратегия")}</h1><div class="muted">${tr("Конструктор")}</div></div>
-      <span class="grow"></span>
-      <button type="button" class="btn ghost sm" data-act="st-cancel">${tr("Отмена")}</button>
-      <button type="button" class="btn primary sm" data-act="st-save">${tr("Сохранить")}</button>
-    </header>
-    <div class="stb-bar">
-      <div class="seg st-mode">
-        <button type="button" data-act="st-write" class="${preview ? "" : "on"}">${tr("Заполнение")}</button>
-        <button type="button" data-act="st-preview" class="${preview ? "on" : ""}">${tr("Просмотр")}</button>
-      </div>
-      <span class="grow"></span>
-      <button type="button" class="link-btn muted" data-act="st-totext">${tr("Писать текстом")}</button>
-    </div>
-    ${preview ? `<article class="panel st-body">${r.html || `<div class="empty">${tr("Пока пусто — заполни хотя бы один раздел")}</div>`}</article>` : `
-    <div class="hint stb-intro">${tr("Заполняй только то, что нужно: пустые поля и разделы на странице не появятся. В каждом поле одна строка — один пункт.")}</div>
-    ${d.sections.map((s, i) => `<section class="panel stb-sec" data-sort="sections" data-i="${i}">
-      <div class="stb-head">${grip}<input class="stb-title" data-stb="sections.${i}.title" value="${esc(s.title)}" placeholder="${tr("Название раздела")}">${tools("sections", i)}</div>
-      ${body(s, i)}
-    </section>`).join("")}
-    <div class="stb-add">
-      ${addBtn("list", tr("+ свой раздел"))}
-      ${kinds.has("setups") ? "" : addBtn("setups", tr("+ сетапы"))}
-      ${kinds.has("risk") ? "" : addBtn("risk", tr("+ риск-менеджмент"))}
-      ${kinds.has("pairs") ? "" : addBtn("pairs", tr("+ торговые пары"))}
-    </div>`}
-  </div>`;
-  hydrateThumbs($("#view"));
-  $$(".stb-area").forEach(autoGrow);
-}
-
 function autoGrow(ta) {
   ta.style.height = "auto";
   ta.style.height = ta.scrollHeight + 2 + "px";
-}
-
-function openBuilder(d) {
-  S.stB = d;
-  S.stBOrig = JSON.stringify(d);
-  S.stPreview = false;
-  renderStrategy();
-  window.scrollTo(0, 0);
-}
-
-// Действия конструктора; true — нажатие обработано.
-function builderClick(b) {
-  const d = S.stB;
-  if (!d) return false;
-  const ds = b.dataset;
-  if (ds.stbmove) {
-    const [path, i, dir] = ds.stbmove.split("|");
-    const [p, k] = clPath(d, path); const a = p[k], x = +i, y = x + +dir;
-    if (y < 0 || y >= a.length) return true;
-    [a[x], a[y]] = [a[y], a[x]];
-  } else if (ds.stbdel) {
-    const [path, i] = ds.stbdel.split("|");
-    const [p, k] = clPath(d, path);
-    const what = path === "sections" ? tr("раздел целиком") : tr("сетап целиком");
-    if (!confirm(tr("Удалить {what}?", { what }))) return true;
-    p[k].splice(+i, 1);
-  } else if (ds.stbimgdel) {
-    const [path, j] = ds.stbimgdel.split("|");
-    const [p, k] = clPath(d, path); p[k].splice(+j, 1);
-  } else if (ds.stbpair) {
-    const [i, pair] = ds.stbpair.split("|");
-    const s = d.sections[+i];
-    s.pairs = s.pairs.includes(pair) ? s.pairs.filter((x) => x !== pair) : [...s.pairs, pair];
-  } else if (ds.stbpairadd) {
-    const val = (prompt(tr("Новая торговая пара (например, USDJPY):")) || "").toUpperCase().replace(/\s/g, "");
-    if (!val) return true;
-    const s = d.sections[+ds.stbpairadd];
-    if (S.lists.pair.some((x) => x.toUpperCase() === val)) { if (!s.pairs.includes(val)) s.pairs.push(val); renderStrategy(); return true; }
-    updateList("pair", [...S.lists.pair, val]).then((ok) => { if (ok) { s.pairs.push(val); renderStrategy(); } });
-    return true;
-  } else if (ds.stbaddsetup) {
-    d.sections[+ds.stbaddsetup].setups.push(SB.newSetup(d.lang));
-  } else if (ds.stbadd) {
-    d.sections.push(SB.newSection(ds.stbadd, d.lang));
-    renderStrategy();
-    $$(".stb-sec").at(-1)?.scrollIntoView({ block: "start" });
-    $$(".stb-sec").at(-1)?.querySelector("input")?.focus();
-    return true;
-  } else return false;
-  renderStrategy();
-  return true;
-}
-
-async function stbUpload(files, path) {
-  if (!auth.hasDrive()) { toast(tr("Нет доступа к Google Drive — при входе отметь доступ к файлам"), true); return; }
-  setBusy(true);
-  try {
-    const [p, k] = clPath(S.stB, path);
-    for (const f of files) p[k].push(await api.uploadImage(f, `strategy_${f.name}`));
-    renderStrategy();
-  } catch (e) {
-    handleErr(e);
-  } finally {
-    setBusy(false);
-  }
-}
-
-async function stbSave() {
-  setBusy(true);
-  try {
-    const md = SB.toMarkdown(S.stB), data = JSON.stringify(S.stB);
-    await api.saveStrategy(md, data);
-    S.strategy = md; S.strategyData = data;
-    S.stB = null; S.stPreview = false;
-    renderStrategy();
-    window.scrollTo(0, 0);
-    toast(tr("Стратегия сохранена"));
-  } catch (e) {
-    handleErr(e);
-  } finally {
-    setBusy(false);
-  }
 }
 
 // ---------------- подключения: перенос сделок с бирж и торговых счетов ----------------
@@ -2199,122 +2112,25 @@ async function impSave() {
   }
 }
 
-function renderStrategyEditor() {
-  const preview = S.stPreview, outline = !preview && S.stOutline;
-  const r = preview ? St.render(S.stEdit) : null;
-  $("#view").innerHTML = `<div class="st-page">
-    <header class="panel st-head">
-      <img src="icons/tb-icon-192.png" alt="" class="st-logo">
-      <div class="st-title"><h1>${tr("Торговая стратегия")}</h1><div class="muted">${tr("Правка")}</div></div>
-      <span class="grow"></span>
-      <button type="button" class="btn ghost sm" data-act="st-cancel">${tr("Отмена")}</button>
-      <button type="button" class="btn primary sm" data-act="st-save">${tr("Сохранить")}</button>
-    </header>
-    <div class="panel st-editor">
-      <div class="st-tools">
-        <div class="seg st-mode">
-          <button type="button" data-act="st-write" class="${preview || outline ? "" : "on"}">${tr("Текст")}</button>
-          <button type="button" data-act="st-outline" class="${outline ? "on" : ""}">${tr("Порядок разделов")}</button>
-          <button type="button" data-act="st-preview" class="${preview ? "on" : ""}">${tr("Просмотр")}</button>
-        </div>
-        ${preview || outline ? "" : `
-        <button type="button" class="btn ghost sm" data-stins="h1">${tr("Раздел")}</button>
-        <button type="button" class="btn ghost sm" data-stins="h2">${tr("Подраздел")}</button>
-        <button type="button" class="btn ghost sm" data-stins="li">${tr("Пункт")}</button>
-        <button type="button" class="btn ghost sm" data-stins="bold"><b>B</b></button>
-        <button type="button" class="btn ghost sm" data-stins="callout">${tr("Блок-подсказка")}</button>
-        <button type="button" class="btn ghost sm" data-stins="details">${tr("Сворачиваемый блок")}</button>
-        <label class="btn ghost sm file">${tr("Картинка")}<input type="file" accept="image/*" multiple data-stimg="1" hidden></label>`}
-      </div>
-      ${preview ? `<article class="st-body st-preview">${r.html}</article>`
-        : outline ? stOutlineHtml()
-        : `<textarea class="st-text" data-stmd="1" spellcheck="true">${esc(S.stEdit)}</textarea>
-      <details class="st-help"><summary>${tr("Как оформлять")}</summary>
-        <div class="muted">${tr("<code># Раздел</code>, <code>## Подраздел</code>; <code>- пункт</code>, <code>1. пункт</code>, <code>- [ ] галочка</code>; вложенность — Tab; <code>**жирный**</code>; блок-подсказка: <code>:::callout ⚠️</code> … <code>:::</code>; сворачиваемый блок: <code>:::details Открыть</code> … <code>:::</code>; <code>---</code> — разделитель.")}</div></details>`}
-    </div>
-  </div>`;
-  if (preview) hydrateThumbs($("#view"));
-}
-
-// «Порядок разделов»: заголовки деревом, раздел перетаскивается вместе с текстом и подразделами
-function stOutlineHtml() {
-  const tree = SO.parse(S.stEdit || "");
-  const grip = `<span class="sort-grip" data-handle title="${tr("Зажми и перетащи, чтобы поменять порядок")}">⠿</span>`;
-  const kids = (n, path) => n.children.map((c, i) => {
-    const p = path === "" ? `${i}` : `${path}.${i}`;
-    return `<div class="sto-item lv${c.level}" data-sort="o:${path}" data-i="${i}">
-      <div class="sto-row">${grip}<span class="sto-title">${esc(c.title) || `<span class="muted">${tr("без названия")}</span>`}</span>
-        <span class="sto-n muted">${tr("строк: {n}", { n: SO.size(c) })}</span></div>
-      ${c.children.length ? `<div class="sto-kids">${kids(c, p)}</div>` : ""}</div>`;
-  }).join("");
-  return tree.children.length
-    ? `<div class="hint sto-hint">${tr("Тяни раздел за ⠿ — он переедет вместе со своим текстом и подразделами. Подразделы двигаются внутри своего раздела. Изменения сохранятся кнопкой «Сохранить».")}</div>
-      <div class="sto">${kids(tree, "")}</div>`
-    : `<div class="empty">${tr("В тексте нет заголовков (# Раздел) — двигать нечего")}</div>`;
-}
-
-function stOutlineReorder(key, order) {
-  const tree = SO.parse(S.stEdit || "");
-  const parent = SO.nodeAt(tree, key.slice(2));
-  const old = parent.children;
-  parent.children = order.map((el) => old[+el.dataset.i]);
-  S.stEdit = SO.serialize(SO.tidy(tree));
-  renderStrategy();
-}
-
-function stbReorder(key, order) {
-  const [p, k] = clPath(S.stB, key);
-  const old = p[k];
-  p[k] = order.map((el) => old[+el.dataset.i]);
-  renderStrategy();
-}
-
-function stInsert(kind) {
-  const ta = $(".st-text");
-  if (!ta) return;
-  const snippets = {
-    h1: `\n# ${tr("Новый раздел")}\n`,
-    h2: `\n## ${tr("Подраздел")}\n`,
-    li: "\n- ",
-    bold: null,
-    callout: `\n:::callout ⚠️\n**${tr("ВАЖНО")}**\n- \n:::\n`,
-    details: `\n:::details ${tr("Открыть")}\n- \n:::\n`,
-  };
-  const a = ta.selectionStart, b = ta.selectionEnd, v = ta.value;
-  let ins = snippets[kind];
-  if (kind === "bold") ins = `**${v.slice(a, b) || tr("текст")}**`;
-  ta.value = v.slice(0, a) + ins + v.slice(b);
-  ta.selectionStart = ta.selectionEnd = a + ins.length;
-  ta.focus();
-  S.stEdit = ta.value;
-}
-
-// Картинки в Drive пользователя: вставить в текст (правка) или подставить вместо img:имя (загрузка недостающих).
-async function stUpload(files, mode) {
+// Картинки в Drive пользователя: подставить вместо img:имя (загрузка недостающих).
+async function stUpload(files) {
   if (!auth.hasDrive()) { toast(tr("Нет доступа к Google Drive — при входе отметь доступ к файлам"), true); return; }
   setBusy(true);
   let done = 0, skipped = 0;
   try {
-    if (mode === "insert") {
-      const urls = [];
-      for (const f of files) { urls.push(await api.uploadImage(f, `strategy_${f.name}`)); done++; }
-      const ta = $(".st-text");
-      const ins = "\n" + urls.map((u) => `![](${u})`).join("\n") + "\n";
-      const pos = ta ? ta.selectionStart : S.stEdit.length;
-      S.stEdit = S.stEdit.slice(0, pos) + ins + S.stEdit.slice(pos);
-      renderStrategy();
-    } else {
-      let md = S.strategy;
-      const missing = St.render(md).missing.map((x) => x.toLowerCase());
-      for (const f of files) {
-        if (!missing.includes(f.name.toLowerCase())) { skipped++; continue; }
-        const url = await api.uploadImage(f, `strategy_${f.name}`);
-        md = St.replaceImage(md, f.name, url);
-        done++;
-      }
-      if (done) { await api.saveStrategy(md, S.strategyData); S.strategy = md; }
-      renderStrategy();
+    let md = S.strategy || "";
+    const missing = St.render(md).missing.map((x) => x.toLowerCase());
+    for (const f of files) {
+      if (!missing.includes(f.name.toLowerCase())) { skipped++; continue; }
+      const url = await api.uploadImage(f, `strategy_${f.name}`);
+      md = St.replaceImage(md, f.name, url);
+      done++;
     }
+    if (done) {
+      await api.saveStrategy(md, "");
+      S.strategy = md; STL.base = md; STL.md = null; S.stDirty = false; lsDel("tj.stdraft");
+    }
+    if (S.view === "strategy") renderStrategy();
     toast(tr("Загружено картинок: {n}", { n: done }) + (skipped ? " · " + tr("не подошло по имени: {n}", { n: skipped }) : ""));
   } catch (e) {
     handleErr(e);
@@ -2323,55 +2139,28 @@ async function stUpload(files, mode) {
   }
 }
 
-async function stSave() {
-  setBusy(true);
-  try {
-    await api.saveStrategy(S.stEdit);
-    S.strategy = S.stEdit; S.strategyData = "";
-    S.stEdit = null; S.stPreview = false;
-    renderStrategy();
-    window.scrollTo(0, 0);
-    toast(tr("Стратегия сохранена"));
-  } catch (e) {
-    handleErr(e);
-  } finally {
-    setBusy(false);
-  }
+function stBarPos() {
+  const bar = $("#stBar"), v = window.visualViewport;
+  if (!bar || !v) return;
+  const kb = Math.max(0, innerHeight - v.height - v.offsetTop);
+  bar.style.transform = kb > 60 ? `translateY(${-kb}px)` : "";
+  bar.classList.toggle("kb", kb > 60);
 }
 
 function strategyClick(b) {
-  if (builderClick(b)) return true;
   const a = b.dataset.act;
-  if (a === "st-build") { openBuilder(SB.starter(LANG)); return true; }
-  if (a === "st-totext") {
-    if (!confirm(tr("В текстовом режиме конструктор отключится: страница будет правиться только текстом (Markdown). Перейти?"))) return true;
-    S.stEdit = SB.toMarkdown(S.stB); S.stB = null; S.stPreview = false; renderStrategy(); return true;
+  if (a === "st-lock") {
+    STL.ed?.destroy(); STL.ed = null;
+    stFlush();
+    lsSet("tj.stlock", stLocked() ? "" : "1");
+    STL.md = null; renderStrategy(); return true;
   }
-  if (S.stB && a === "st-cancel") {
-    if (JSON.stringify(S.stB) !== S.stBOrig && !confirm(tr("Закрыть без сохранения?"))) return true;
-    S.stB = null; S.stPreview = false; renderStrategy(); return true;
+  if (a === "st-template") {
+    STL.ed?.destroy(); STL.ed = null;
+    stChanged(St.TEMPLATE[LANG] || St.TEMPLATE.ru);
+    STL.md = null; renderStrategy(); return true;
   }
-  if (S.stB && a === "st-save") { stbSave(); return true; }
-  if (a === "st-template") { S.stEdit = St.TEMPLATE[LANG] || St.TEMPLATE.ru; S.stPreview = false; renderStrategy(); return true; }
-  if (a === "st-blank") { S.stEdit = ""; S.stPreview = false; renderStrategy(); return true; }
-  if (a === "st-edit" && SB.parse(S.strategyData)) { openBuilder(SB.parse(S.strategyData)); return true; }
-  if (a === "st-edit") { S.stEdit = S.strategy || ""; S.stPreview = false; renderStrategy(); window.scrollTo(0, 0); return true; }
-  if (a === "st-cancel") {
-    if (S.stEdit !== (S.strategy || "") && !confirm(tr("Закрыть без сохранения?"))) return true;
-    S.stEdit = null; renderStrategy(); return true;
-  }
-  if (a === "st-save") { stSave(); return true; }
-  if (a === "st-write") { S.stPreview = false; S.stOutline = false; renderStrategy(); return true; }
-  if (a === "st-outline") { S.stPreview = false; S.stOutline = true; renderStrategy(); return true; }
-  if (a === "st-preview") { S.stPreview = true; S.stOutline = false; renderStrategy(); return true; }
-  if (a === "st-expand") {
-    const all = $$(".st-details");
-    const open = all.some((d) => !d.open);
-    all.forEach((d) => (d.open = open));
-    b.textContent = open ? tr("Свернуть всё") : tr("Развернуть всё");
-    return true;
-  }
-  if (b.dataset.stins) { stInsert(b.dataset.stins); return true; }
+  if (a === "st-retry") { stFlush(); return true; }
   return false;
 }
 
@@ -3034,11 +2823,16 @@ function events() {
   sortable($("#view"), {
     axis: (key) => (key.endsWith("images") ? "x" : "y"),
     onDrop: (key, order) => {
-      if (key.startsWith("o:") && S.stEdit != null) stOutlineReorder(key, order);
-      else if (order[0].closest(".stb-page") && S.stB) stbReorder(key, order);
-      else if (order[0].closest(".cle2") && S.clDraft) clReorder(key, order);
+      if (order[0].closest(".cle2") && S.clDraft) clReorder(key, order);
     },
   });
+  $("#view").addEventListener("pointerdown", (e) => { if (e.target.closest("[data-nbbar]")) e.preventDefault(); });
+  // не потерять правку стратегии: сохранить при уходе из приложения, предупредить при закрытии вкладки
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stFlush(); });
+  window.addEventListener("beforeunload", (e) => { if (S.stDirty) { stFlush(); e.preventDefault(); e.returnValue = ""; } });
+  // панель блоков на телефоне держится над клавиатурой
+  window.visualViewport?.addEventListener("resize", stBarPos);
+  window.visualViewport?.addEventListener("scroll", stBarPos);
   $("#view").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (btn && S.view === "checklist" && checklistClick(btn)) return;
@@ -3054,6 +2848,10 @@ function events() {
     if (btn?.dataset.act === "ai-open") { setView("ai"); return; }
     if (btn?.dataset.aiprov) { AI.saveSettings({ ...AI.settings(), provider: btn.dataset.aiprov }); renderConnect(); if (btn.dataset.aiprov === "gemini" && !AI.settings().gmodels.length) aiLoadGeminiModels(); return; }
     if (btn?.dataset.act === "cx-open") { setView("connect"); return; }
+    const nbt = e.target.closest("[data-nbtoc]");
+    if (nbt) { e.preventDefault(); STL.ed?.focusHeading(nbt.dataset.nbtoc); return; }
+    const bar = e.target.closest("[data-nbbar]");
+    if (bar) { STL.ed?.act(bar.dataset.nbbar, bar); return; }
     const toc = e.target.closest("[data-sttoc]");
     if (toc) { e.preventDefault(); document.getElementById(toc.dataset.sttoc)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     const m = e.target.closest("[data-mode]");
@@ -3068,7 +2866,6 @@ function events() {
   $("#view").addEventListener("input", (e) => {
     if (e.target.dataset.rnote && S.run) { S.run.note = e.target.value; saveRun(); }
     if (e.target.dataset.impf) { impInput(e.target); return; }
-    if (e.target.dataset.stmd) { S.stEdit = e.target.value; return; }
     if (e.target.dataset.cxf) { CX.form[e.target.dataset.cxf] = e.target.value; return; }
     if (S.view === "lot" && lotInput(e.target)) return;
     if (e.target.dataset.aif === "key" || e.target.dataset.aif === "gkey") { AI.saveSettings({ ...AI.settings(), [e.target.dataset.aif]: e.target.value.trim() }); return; }
@@ -3078,7 +2875,6 @@ function events() {
       const q = $("[data-nwq]"); if (q) { q.focus(); q.setSelectionRange(pos, pos); }
       return;
     }
-    if (e.target.dataset.stb && S.stB) { const [p, key] = clPath(S.stB, e.target.dataset.stb); p[key] = e.target.value; if (e.target.classList.contains("stb-area")) autoGrow(e.target); return; }
     if (e.target.dataset.clp && S.clDraft) { const [p, key] = clPath(S.clDraft, e.target.dataset.clp); p[key] = e.target.value; if (e.target.classList.contains("cle2-area")) autoGrow(e.target); }
   });
   $("#view").addEventListener("mousemove", chartTip);
@@ -3105,9 +2901,7 @@ function events() {
     if (e.target.dataset.cxpick && CX.preview) { CX.preview.items[+e.target.dataset.cxpick].pick = e.target.checked; renderConnect(); return; }
     const files = [...(e.target.files || [])];
     if (!files.length) return;
-    if (e.target.dataset.stimg) stUpload(files, "insert");
-    if (e.target.dataset.stmissing) stUpload(files, "missing");
-    if (e.target.dataset.stbimg && S.stB) stbUpload(files, e.target.dataset.stbimg);
+    if (e.target.dataset.stmissing) stUpload(files);
     e.target.value = "";
   });
   $("#view").addEventListener("keydown", (e) => {
