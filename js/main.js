@@ -799,10 +799,45 @@ function seg(name, options, cur) {
     `<button type="button" data-val="${esc(o)}" class="${cur === o ? "on " + (resClass(o) || o.toLowerCase()) : ""}">${esc(o)}</button>`).join("")}</div>`;
 }
 
-// Пункт списка в режиме правки: стрелки двигают его в списке, × убирает.
-function editChip(kind, p, i, n) {
-  const mv = (d, sym, lbl) => `<button type="button" class="chip-mv" data-mv="${kind}" data-val="${esc(p)}" data-dir="${d}"${(d < 0 ? i === 0 : i === n - 1) ? " disabled" : ""} aria-label="${tr(lbl)}">${sym}</button>`;
-  return `<span class="chip edit">${mv(-1, "‹", "Левее")}${esc(p)}${mv(1, "›", "Правее")}<button type="button" class="chip-x" data-rm="${kind}" data-val="${esc(p)}" aria-label="${tr("Убрать {x}", { x: esc(p) })}">×</button></span>`;
+// Пункт списка в режиме правки: зажать и перетащить — меняет порядок, × убирает.
+function editChip(kind, p) {
+  return `<span class="chip edit" data-drag="${kind}" data-val="${esc(p)}" title="${tr("Зажми и перетащи, чтобы поменять порядок")}"><span class="chip-grip" aria-hidden="true">⠿</span>${esc(p)}<button type="button" class="chip-x" data-rm="${kind}" data-val="${esc(p)}" aria-label="${tr("Убрать {x}", { x: esc(p) })}">×</button></span>`;
+}
+
+// Перетаскивание пунктов списка мышью или пальцем (pointer events).
+function chipDrag(el) {
+  el.addEventListener("pointerdown", (e) => {
+    const chip = e.target.closest(".chip.edit[data-drag]");
+    if (!chip || e.target.closest("button") || e.button > 0 || !S.ed) return;
+    const box = chip.parentElement, kind = chip.dataset.drag;
+    const sx = e.clientX, sy = e.clientY;
+    let on = false;
+    const move = (ev) => {
+      if (!on) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+        on = true; chip.classList.add("dragging"); box.classList.add("drag-box");
+      }
+      ev.preventDefault();
+      const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(".chip.edit[data-drag]");
+      if (!over || over === chip || over.parentElement !== box) return;
+      const r = over.getBoundingClientRect();
+      const after = ev.clientY > r.bottom ? true : ev.clientY < r.top ? false : ev.clientX > r.left + r.width / 2;
+      box.insertBefore(chip, after ? over.nextSibling : over);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (!on) return;
+      chip.classList.remove("dragging"); box.classList.remove("drag-box");
+      const list = [...box.querySelectorAll(".chip.edit[data-drag]")].map((c) => c.dataset.val);
+      if (list.some((v, i) => v !== S.lists[kind][i])) updateList(kind, list);
+    };
+    // слушаем окно: перестановка узла в DOM сбрасывает захват указателя
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  });
 }
 
 // Поле-список (POI — несколько значений, Entry и Idea — одно) с режимом правки самого списка.
@@ -810,7 +845,7 @@ function listField(kind, label, items, selected) {
   const manage = S.ed.manage === kind;
   let chips;
   if (manage) {
-    chips = items.map((p, i) => editChip(kind, p, i, items.length)).join("")
+    chips = items.map((p) => editChip(kind, p)).join("")
       + `<span class="chip-add"><input data-add="${kind}" placeholder="${tr({ idea: "Новая идея", pair: "Новая пара, например USDJPY" }[kind] || "Новая запись")}" enterkeyhint="done" maxlength="${kind === "idea" ? 80 : 40}"${kind === "pair" ? ' autocapitalize="characters"' : ""}>`
       + `<button type="button" class="btn sm" data-addbtn="${kind}">${tr("Добавить")}</button></span>`;
   } else {
@@ -2715,7 +2750,7 @@ function shotsBlock() {
   const head = `<div class="field-h shots-h"><span>${tr("Скриншоты")} <span class="muted">${tr("— ссылка TradingView, фото или Ctrl+V картинки в поле")}</span></span>
     <button type="button" class="link-btn" data-manage="tf">${manage ? tr("Готово") : tr("Изменить список")}</button></div>`;
   const mgr = manage ? `<div class="field managing"><div class="chips">
-      ${S.lists.tf.map((p, i, a) => editChip("tf", p, i, a.length)).join("")}
+      ${S.lists.tf.map((p) => editChip("tf", p)).join("")}
       <span class="chip-add"><input data-add="tf" placeholder="${tr("Новый таймфрейм, например H2 или M30")}" enterkeyhint="done" maxlength="12">
       <button type="button" class="btn sm" data-addbtn="tf">${tr("Добавить")}</button></span></div>
       <div class="hint">${tr("Список строк общий для всех сделок и сохраняется в таблицу (лист {sheet}, колонка E).", { sheet: esc(CONFIG.listsSheet) })}
@@ -2871,6 +2906,7 @@ async function deleteTrade() {
 
 function editorEvents() {
   const el = $("#editor");
+  chipDrag(el);
   el.addEventListener("click", (e) => {
     const b = e.target.closest("button, [data-img]");
     if (!b || !S.ed) return;
@@ -2888,12 +2924,6 @@ function editorEvents() {
     }
     if (b.dataset.manage) { S.ed.manage = S.ed.manage === b.dataset.manage ? null : b.dataset.manage; renderEditor(); $(`input[data-add="${b.dataset.manage}"]`)?.focus(); return; }
     if (b.dataset.addbtn) return addToList(b.dataset.addbtn);
-    if (b.dataset.mv) {
-      const kind = b.dataset.mv, list = [...S.lists[kind]], i = list.indexOf(b.dataset.val), j = i + +b.dataset.dir;
-      if (i < 0 || j < 0 || j >= list.length) return;
-      [list[i], list[j]] = [list[j], list[i]];
-      return updateList(kind, list);
-    }
     if (b.dataset.rm) {
       const kind = b.dataset.rm, val = b.dataset.val;
       if (!confirm(tr("Убрать «{v}» из списка {l}?", { v: val, l: tr(LIST_LABEL[kind]) }))) return;

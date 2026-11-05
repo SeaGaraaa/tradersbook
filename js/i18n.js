@@ -85,8 +85,7 @@ export const EN = {
   // карточка сделки
   "Сделка не найдена — таблица изменилась": "Trade not found — the sheet has changed",
   "Убрать {x}": "Remove {x}",
-  "Левее": "Move left",
-  "Правее": "Move right",
+  "Зажми и перетащи, чтобы поменять порядок": "Hold and drag to reorder",
   "Новая идея": "New idea",
   "Новая пара, например USDJPY": "New pair, e.g. USDJPY",
   "Новая запись": "New item",

@@ -278,10 +278,10 @@ input[type="datetime-local"] { min-width: 0; -webkit-appearance: none; appearanc
 .chip.add { color: var(--accent); border-style: dashed; }
 .chip.edit { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 13px; border-radius: 999px; padding: 3px 4px 3px 12px; }
 .chip-x { width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--panel2); color: var(--lose); font-size: 15px; line-height: 1; cursor: pointer; }
-.chip.edit { padding-left: 4px; }
-.chip-mv { width: 22px; height: 22px; border-radius: 50%; border: 0; background: transparent; color: var(--muted); font-size: 17px; line-height: 1; cursor: pointer; padding: 0; }
-.chip-mv:hover:not(:disabled) { background: var(--panel2); color: var(--text); }
-.chip-mv:disabled { opacity: .25; cursor: default; }
+.chip.edit { padding-left: 6px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.chip-grip { color: var(--muted); font-size: 12px; margin-right: 2px; }
+.chip.edit.dragging { cursor: grabbing; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--panel)); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.drag-box { cursor: grabbing; }
 .chip-n { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-right: 5px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; }
 .chip-add { display: inline-flex; gap: 6px; flex: 1 1 220px; }
 .chip-add input { padding: 6px 10px; font-size: 14px; }
