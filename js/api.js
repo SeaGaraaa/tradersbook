@@ -20,7 +20,8 @@ const colLetter = (k) => String.fromCharCode(65 + k);
 // Два журнала: реальные сделки и бэктест. Колонки A..T как в Journal, U — Screens (другие таймфреймы),
 // у бэктеста ещё V — Idea.
 export const BOOKS = {
-  live: { title: CONFIG.journalSheet, ncols: 24 }, // V не используется (Idea только в бэктесте), W — Checklist, X — Account
+  // V — Setup, W — Checklist, X — Account; Y — тикет MT5 (JSON от sync.py): читается, приложение его не пишет
+  live: { title: CONFIG.journalSheet, ncols: 24, read: 25 },
   bt: { title: CONFIG.backtestSheet, ncols: 23 },
 };
 
@@ -66,7 +67,7 @@ function cellLinks(c) {
 const sheetTitles = async () =>
   (await json(`${SHEETS}${ID}?fields=sheets(properties(sheetId,title))`)).sheets.map((s) => s.properties);
 
-function parseTrades(sheet, ncols) {
+function parseTrades(sheet, ncols, read = ncols) {
   const rowData = sheet?.data?.[0]?.rowData || [];
   const trades = [];
   trades.headers = (rowData[0]?.values || []).map((c) => String(cellValue(c)));
@@ -80,7 +81,9 @@ function parseTrades(sheet, ncols) {
       if (l.length) links[k] = l;
     }
     if (v.every((x) => x === "")) return;
-    trades.push({ n: i + 1, v, links });
+    const t = { n: i + 1, v, links };
+    if (read > ncols) t.mt5 = String(cellValue(cells[ncols]) || "");
+    trades.push(t);
   });
   return trades;
 }
@@ -90,7 +93,7 @@ export async function loadAll() {
   const props = await sheetTitles();
   const has = (t) => props.some((p) => p.title === t);
   const D = q(CONFIG.dashboardSheet);
-  const lastCol = (b) => String.fromCharCode(64 + b.ncols);
+  const lastCol = (b) => String.fromCharCode(64 + (b.read || b.ncols));
   const ranges = [`${q(BOOKS.live.title)}!A1:${lastCol(BOOKS.live)}`];
   if (has(CONFIG.dashboardSheet)) ranges.push(`${D}!H9:H17`, `${D}!H21:H23`);
   if (has(CONFIG.listsSheet)) ranges.push(`${q(CONFIG.listsSheet)}!A1:I`);
@@ -149,7 +152,7 @@ export async function loadAll() {
     strategyData, // JSON конструктора (колонка B); пусто — стратегия написана текстом
     strategy, // null — листа ещё нет (стратегию не заполняли)
     runs,
-    live: { sheetId: js.properties.sheetId, trades: parseTrades(js, BOOKS.live.ncols) },
+    live: { sheetId: js.properties.sheetId, trades: parseTrades(js, BOOKS.live.ncols, BOOKS.live.read) },
     bt: bs ? { sheetId: bs.properties.sheetId, trades: parseTrades(bs, BOOKS.bt.ncols) } : null,
     lists,
   };

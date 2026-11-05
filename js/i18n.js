@@ -23,6 +23,10 @@ export function applyStatic(root = document) {
 }
 
 export const EN = {
+  "Тикет MT5": "MT5 ticket",
+  "— сам из терминала, при автопереносе с компьютера": "— filled in automatically by the desktop MT5 sync",
+  "Скачать": "Download",
+  "T/P «—»: тейк, поставленный после входа, MT5 не хранит. Его запишет наблюдатель watch.py, если он запущен.": "T/P “—”: MT5 does not keep a take profit set after entry. The watch.py watcher records it when it is running.",
   "Нет права записи в эту Google-таблицу. Нажми ⟳ — приложение откроет твою таблицу.": "No permission to edit this Google Sheet. Tap ⟳ — the app will open your own sheet.",
   // стратегия: редактор блоков (notion.js)
   "Страница": "Page",

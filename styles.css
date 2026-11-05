@@ -1246,3 +1246,8 @@ body.nb-dragmode, body.nb-dragmode * { cursor: grabbing !important; user-select:
   .nb-bar { gap: 0; padding-left: 4px; padding-right: 4px; }
   .nb-bar button { flex: 1 1 auto; min-width: 32px; padding: 0 5px; font-size: 14px; }
 }
+
+/* тикет MT5 картинкой под скриншотами сделки (v81) */
+.mt5-ticket { margin: 4px 0 14px; }
+.mt5-ticket img { display: block; width: 100%; max-width: 560px; height: auto; border-radius: 14px; }
+.mt5-ticket .hint { margin-top: 6px; }

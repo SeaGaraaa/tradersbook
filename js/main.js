@@ -13,6 +13,7 @@ import * as Lot from "./lot.js";
 import * as AI from "./ai.js";
 import * as TV from "./tvread.js";
 import { sortable } from "./sortable.js";
+import * as Ticket from "./ticket.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, weekdayName, weekdayOf, monthKey, fromInput, sameMinute, sessionOf,
@@ -912,6 +913,7 @@ function renderEditor() {
         : `<div class="hint pf-note">${tr("На реальном счёте Profit берётся из терминала: автоперенос MT5 на компьютере или раздел API.")}</div>`}
         <div class="hint" id="rHint">${Number.isFinite(r) ? tr("Итог в R: {r}", { r: fmtSigned(r) }) : bt ? tr("Совет: в бэктесте ставь одинаковый Risk (например 0,5), тогда идеи честно сравниваются в R.") : ""}</div>
         ${shotsBlock()}
+        ${S.ed.mode === "live" && S.ed.n ? Ticket.block(trades("live").find((x) => x.n === S.ed.n)?.mt5) : ""}
         <label>Exit<input data-k="exit" value="${esc(f.exit)}"></label>
         <label>Notes<textarea data-k="notes" rows="4">${esc(f.notes)}</textarea></label>
         ${isNew ? "" : `<button class="btn danger wide" data-act="delete">${tr("Удалить сделку")}</button>`}
