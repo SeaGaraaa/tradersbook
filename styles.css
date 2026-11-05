@@ -1220,3 +1220,28 @@ body.nb-dragmode, body.nb-dragmode * { cursor: grabbing !important; user-select:
 .nb-h1 > .nb-gut { top: 31px; }
 .nb-doc > .nb-h1:first-child > .nb-gut { top: 9px; }
 @media (max-width: 760px) { .nb-h1 > .nb-gut { top: 25px; } }
+
+/* ---------- стратегия: страницы внутри стратегии (v76) ---------- */
+.nb-subpage { margin-top: 4px; }
+.nb-pglink { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; color: inherit; font: inherit; text-align: left; padding: 4px 6px; margin-left: -6px; border-radius: 6px; cursor: pointer; }
+.nb-pglink:hover, .nb-pglink:focus-visible { background: var(--panel2); outline: none; }
+.nb-pg-ic { flex: none; font-size: 18px; line-height: 1; }
+.nb-pg-t { font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--muted) 45%, transparent); text-underline-offset: 4px; overflow-wrap: anywhere; min-width: 0; }
+.nb-dropin > .nb-row { background: color-mix(in srgb, var(--nb-blue) 16%, transparent); box-shadow: 0 0 0 2px var(--nb-blue); border-radius: 6px; }
+.nb-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; margin: 0 0 18px -6px; font-size: 14px; color: var(--muted); }
+.nb-crumbs button { background: none; border: 0; color: var(--muted); font: inherit; padding: 3px 6px; border-radius: 6px; cursor: pointer; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.nb-crumbs button:hover { background: var(--panel2); color: var(--text, inherit); }
+.nb-crumb-sep { opacity: .5; }
+.nb-crumb-cur { padding: 3px 6px; color: var(--text, inherit); overflow-wrap: anywhere; min-width: 0; }
+.nb-ptitle { font-size: 34px; font-weight: 700; line-height: 1.25; margin: 0 0 22px; outline: none; overflow-wrap: anywhere; }
+.nb-ptitle:empty::before { content: attr(data-ph); color: var(--muted); opacity: .5; }
+.nb-page.sub .nb-head, .nb-page.sub .nb-start, .nb-page.sub .nb-missing { display: none; }
+.st-subpage > summary::before { content: none; }
+@media (max-width: 560px) {
+  .nb-ptitle { font-size: 27px; margin-bottom: 16px; }
+  .nb-crumbs { font-size: 13px; margin-bottom: 12px; }
+}
+@media (max-width: 400px) {
+  .nb-bar { gap: 0; padding-left: 4px; padding-right: 4px; }
+  .nb-bar button { flex: 1 1 auto; min-width: 32px; padding: 0 5px; font-size: 14px; }
+}

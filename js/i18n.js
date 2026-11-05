@@ -24,6 +24,20 @@ export function applyStatic(root = document) {
 
 export const EN = {
   // стратегия: редактор блоков (notion.js)
+  "Страница": "Page",
+  "Отдельная страница внутри стратегии": "Separate page inside the strategy",
+  "Список с точками": "Bulleted list",
+  "Список задач": "To-do list",
+  "Сворачиваемый список": "Toggle list",
+  "Bulleted list · «- »": "Bulleted list · “- ”",
+  "Numbered list · «1. »": "Numbered list · “1. ”",
+  "To-do list · «[] »": "To-do list · “[] ”",
+  "Toggle list · «> »": "Toggle list · “> ”",
+  "Divider · «---»": "Divider · “---”",
+  "Открыть страницу": "Open page",
+  "Без названия": "Untitled",
+  "Удалить страницу «{t}» со всем, что на ней?": "Delete the page “{t}” with everything on it?",
+  // стратегия: редактор блоков (notion.js)
   "+ ещё блоков: {n}": "+ {n} more blocks",
   "Блок": "Block",
   "Восстановил несохранённую правку стратегии": "Restored an unsaved strategy edit",

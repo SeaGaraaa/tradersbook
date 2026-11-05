@@ -6,6 +6,7 @@
 //   ![](ссылка)         картинка (Google Drive, обычная ссылка или img:имя_файла — ещё не загружена)
 //   :::callout ⚠️ … :::  блок-подсказка (как RISK / INVALIDATION в Notion)
 //   :::details Открыть … :::  сворачиваемый блок
+//   :::page Название … :::  отдельная страница (в редакторе открывается отдельно, при чтении — раскрывается)
 //   ---                 разделитель
 import { esc, driveId } from "./util.js";
 
@@ -53,10 +54,11 @@ export function render(md) {
     const line = raw.replace(/\s+$/, "");
     if (!line.trim()) { closeLists(); continue; }
 
-    const blk = line.trim().match(/^:::(callout|details)\s*(.*)$/);
+    const blk = line.trim().match(/^:::(callout|details|page)\s*(.*)$/);
     if (blk) {
       closeLists();
       if (blk[1] === "callout") { out.push(`<div class="st-callout"><span class="st-callout-icon">${esc(blk[2] || "💡")}</span><div class="st-callout-body">`); blocks.push("callout"); }
+      else if (blk[1] === "page") { out.push(`<details class="st-details st-subpage"><summary>📄 ${inline(blk[2] && blk[2] !== "…" ? blk[2] : "Без названия")}</summary><div class="st-details-body">`); blocks.push("details"); }
       else { out.push(`<details class="st-details"><summary>${inline(blk[2] || "…")}</summary><div class="st-details-body">`); blocks.push("details"); }
       continue;
     }

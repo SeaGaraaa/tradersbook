@@ -2,6 +2,7 @@
 // Хранится по-прежнему Markdown (тот же, что рисует strategy.js), поэтому AI и старые страницы его понимают.
 //   «/» — меню блоков, «+» слева — новый блок, ⠿ — тянуть (синяя линия показывает, куда встанет) или меню блока.
 //   Сокращения в начале строки: «# », «## », «### », «- », «1. », «[] », «> » (сворачиваемый), «---».
+//   Страница («/страница») — отдельная страница внутри стратегии: открывается нажатием, сверху путь «Стратегия / …».
 //   Enter — новый блок, Backspace в начале — обычный текст / склеить с предыдущим, Tab / Shift+Tab — вложенность списка.
 import { esc } from "./util.js";
 import { inline, imageHtml } from "./strategy.js";
@@ -23,11 +24,11 @@ export function parse(md) {
     const line = raw.replace(/\s+$/, "");
     const cur = stack[stack.length - 1];
     if (!line.trim()) continue;
-    const blk = line.trim().match(/^:::(callout|details)\s*(.*)$/);
+    const blk = line.trim().match(/^:::(callout|details|page)\s*(.*)$/);
     if (blk) {
       const b = blk[1] === "callout"
         ? { id: nid(), type: "callout", icon: blk[2] || "💡", children: [] }
-        : { id: nid(), type: "toggle", text: blk[2] === "…" ? "" : blk[2], children: [] };
+        : { id: nid(), type: blk[1] === "page" ? "page" : "toggle", text: blk[2] === "…" ? "" : blk[2], children: [] };
       cur.push(b); stack.push(b.children); continue;
     }
     if (line.trim() === ":::") { if (stack.length > 1) stack.pop(); continue; }
@@ -67,6 +68,7 @@ export function serialize(blocks) {
       if (b.type === "image") { if (b.url) out.push("", `![](${b.url})`, ""); continue; }
       if (b.type === "callout") { out.push("", `:::callout ${b.icon || "💡"}`); walk(b.children || []); out.push(":::", ""); continue; }
       if (b.type === "toggle") { out.push("", `:::details ${text || "…"}`); walk(b.children || []); out.push(":::", ""); continue; }
+      if (b.type === "page") { out.push("", `:::page ${text || "…"}`); walk(b.children || []); out.push(":::", ""); continue; }
     }
   };
   walk(blocks);
@@ -143,6 +145,18 @@ export function mount(root, opts) {
   const undo = [], redo = [];
   const open = new Set(); // открытые сворачиваемые блоки
   let typingT = 0, menu = null, slash = null, drag = null;
+  // открытые страницы: id по порядку (пусто — главная страница стратегии)
+  let path = [];
+  const allPages = (list = blocks, out = []) => { for (const b of list) { if (b.type === "page") out.push(b); if (b.children) allPages(b.children, out); } return out; };
+  { const pg = allPages(); path = (opts.path || []).map((n) => pg[n]?.id).filter(Boolean); }
+  function page() { while (path.length && find(path[path.length - 1])?.b.type !== "page") path.pop(); return path.length ? find(path[path.length - 1]).b : null; }
+  const view = () => page()?.children || blocks;
+  function headings() { return view().filter((b) => b.type === "h1" && b.text.trim()).map((b) => ({ id: b.id, text: b.text })); }
+  function tellPath() { const pg = allPages(); opts.onPath?.(path.map((id) => pg.findIndex((x) => x.id === id)), path.length > 0); }
+  function go(newPath, focus) {
+    path = newPath;
+    closeMenu(); tellPath(); draw(focus); window.scrollTo(0, 0); opts.onHeadings?.(headings());
+  }
 
   function blank(type = "p", extra = {}) { return { id: nid(), type, text: "", ...extra }; }
 
@@ -156,7 +170,7 @@ export function mount(root, opts) {
     return null;
   }
   // блоки в порядке на экране (внутрь свёрнутых не заходим)
-  function flat(list = blocks, out = []) {
+  function flat(list = view(), out = []) {
     for (const b of list) {
       out.push(b);
       if (b.children && (b.type === "callout" || open.has(b.id))) flat(b.children, out);
@@ -177,7 +191,7 @@ export function mount(root, opts) {
   }
   function emit() {
     opts.onChange?.(serialize(blocks));
-    opts.onHeadings?.(blocks.filter((b) => b.type === "h1" && b.text.trim()).map((b) => ({ id: b.id, text: b.text })));
+    opts.onHeadings?.(headings());
   }
   function typed() { clearTimeout(typingT); typingT = setTimeout(commit, 500); opts.onChange?.(serialize(blocks)); }
   function back(from, to) {
@@ -188,6 +202,7 @@ export function mount(root, opts) {
     blocks = JSON.parse(last);
     const f = document.activeElement?.closest?.(".nb-b")?.dataset.id;
     draw(f && find(f) ? { id: f, end: true } : null);
+    tellPath();
     emit();
   }
 
@@ -208,6 +223,7 @@ export function mount(root, opts) {
       return blockHtml(b, n);
     }).join("");
   }
+  function pageTitle(b) { return b.text ? inline(b.text) : esc(tr("Без названия")); }
   function blockHtml(b, n) {
     const text = (cls = "") => `<div class="nb-text ${cls}" contenteditable="true" spellcheck="true" data-ph="${esc(tr(PH[b.type] || PH.p))}">${inline(b.text || "")}</div>`;
     let row = "", kids = "";
@@ -222,21 +238,33 @@ export function mount(root, opts) {
     } else if (b.type === "callout") {
       row = `<button type="button" class="nb-icon" data-nb="icon" tabindex="-1" title="${tr("Сменить значок")}">${esc(b.icon || "💡")}</button><div class="nb-kids">${listHtml(b.children || [], b)}</div>`;
     } else if (b.type === "divider") row = `<div class="nb-hr" tabindex="0" data-nb="sel"><hr></div>`;
+    else if (b.type === "page") row = `<button type="button" class="nb-pglink" data-nb="open"><span class="nb-pg-ic">📄</span><span class="nb-pg-t ${b.text ? "" : "muted"}">${pageTitle(b)}</span></button>`;
     else if (b.type === "image") row = `<figure class="nb-fig" tabindex="0" data-nb="sel">${imageHtml(b.url)}</figure>`;
     else row = text();
-    return `<div class="nb-b nb-${b.type}" data-id="${b.id}" style="--ind:${ind}">
+    return `<div class="nb-b nb-${b.type === "page" ? "subpage" : b.type}" data-id="${b.id}" style="--ind:${ind}">
       <div class="nb-gut"><button type="button" class="nb-plus" data-nb="plus" tabindex="-1" title="${tr("Нажми, чтобы добавить блок ниже")}">+</button><span class="nb-grip" data-nb="grip" title="${tr("Тяни, чтобы переместить · нажми — меню")}">⠿</span></div>
       <div class="nb-row">${row}</div>${kids}</div>`;
   }
   // focus: { id, off } | { id, end: true }
   function draw(focus) {
     const y = window.scrollY;
-    root.innerHTML = `<div class="nb-doc">${listHtml(blocks, null)}</div>`;
+    if (!blocks.length) blocks.push(blank());
+    const p = page();
+    if (p && !p.children.length) p.children.push(blank());
+    let head = "";
+    if (p) {
+      const chain = path.map((id) => find(id).b);
+      head = `<nav class="nb-crumbs"><button type="button" data-nb="go" data-to="0">📄 ${esc(tr("Стратегия"))}</button>`
+        + chain.map((b, i) => `<span class="nb-crumb-sep">/</span>` + (i === chain.length - 1 ? `<span class="nb-crumb-cur">${pageTitle(b)}</span>` : `<button type="button" data-nb="go" data-to="${i + 1}">${pageTitle(b)}</button>`)).join("")
+        + `</nav><div class="nb-ptitle" contenteditable="true" spellcheck="true" data-ptitle="1" data-ph="${esc(tr("Без названия"))}">${esc(p.text || "")}</div>`;
+    }
+    root.innerHTML = head + `<div class="nb-doc">${listHtml(view(), null)}</div>`;
     opts.hydrate?.(root);
     window.scrollTo(0, y);
     if (focus) place(focus);
   }
   function place(focus) {
+    if (focus.title) { const t = root.querySelector("[data-ptitle]"); if (t) setCaret(t, focus.end ? t.textContent.length : 0); return; }
     const el = textEl(focus.id);
     if (el) setCaret(el, focus.end ? textLen(el) : focus.off || 0);
     else blockEl(focus.id)?.querySelector("[data-nb=sel]")?.focus({ preventScroll: true });
@@ -266,12 +294,13 @@ export function mount(root, opts) {
     if (type === "callout" && from !== "callout") { b.children = from === "toggle" ? [blank("p", { text: b.text || "" }), ...(b.children || [])] : [blank("p", { text: b.text || "" })]; b.icon ||= "💡"; delete b.text; }
     else if (type === "toggle" && from === "callout") { const kids = b.children || []; b.text = ""; b.children = kids; }
     else if (type === "toggle") { b.children ||= []; open.add(b.id); }
+    else if (type === "page") { b.children = [blank()]; }
     if (!LIST.has(type)) delete b.indent;
     if (type !== "todo") delete b.checked;
     if (type === "divider" || type === "image") { delete b.text; }
     b.type = type;
   }
-  function remove(id) { const f = find(id); if (f) f.list.splice(f.i, 1); if (!blocks.length) blocks.push(blank()); }
+  function remove(id) { const f = find(id); if (f) f.list.splice(f.i, 1); const v = view(); if (!v.length) v.push(blank()); }
   function clone(b) { const c = JSON.parse(JSON.stringify(b)); const re = (x) => { x.id = nid(); (x.children || []).forEach(re); }; re(c); return c; }
   // заголовок тянется вместе со своим разделом (до следующего заголовка того же или старшего уровня)
   function section(id) {
@@ -333,12 +362,13 @@ export function mount(root, opts) {
     { type: "h1", icon: "H1", label: "Заголовок 1", hint: "Раздел, попадает в оглавление", keys: "heading h1 заголовок раздел" },
     { type: "h2", icon: "H2", label: "Заголовок 2", hint: "Подраздел", keys: "heading h2 заголовок подраздел" },
     { type: "h3", icon: "H3", label: "Заголовок 3", hint: "Маленький заголовок", keys: "heading h3 заголовок" },
-    { type: "bullet", icon: "•", label: "Список", hint: "Пункты с точками", keys: "bullet list список пункт" },
-    { type: "num", icon: "1.", label: "Нумерованный список", hint: "1, 2, 3…", keys: "number numbered нумерованный список" },
-    { type: "todo", icon: "☑", label: "Галочка", hint: "Пункт, который можно отметить", keys: "todo check галочка задача чек" },
-    { type: "toggle", icon: "▸", label: "Сворачиваемый блок", hint: "Скрывает текст внутри", keys: "toggle details сворачиваемый скрыть" },
+    { type: "page", icon: "📄", label: "Страница", hint: "Отдельная страница внутри стратегии", keys: "page subpage страница подстраница" },
+    { type: "bullet", icon: "•", label: "Список с точками", hint: "Bulleted list · «- »", keys: "bullet bulleted list список пункт точки" },
+    { type: "num", icon: "1.", label: "Нумерованный список", hint: "Numbered list · «1. »", keys: "number numbered list нумерованный список" },
+    { type: "todo", icon: "☑", label: "Список задач", hint: "To-do list · «[] »", keys: "todo to-do check list галочка задача чек" },
+    { type: "toggle", icon: "▸", label: "Сворачиваемый список", hint: "Toggle list · «> »", keys: "toggle list details сворачиваемый скрыть" },
     { type: "callout", icon: "💡", label: "Подсказка", hint: "Выделенный блок со значком", keys: "callout подсказка важно риск" },
-    { type: "divider", icon: "—", label: "Разделитель", hint: "Линия между блоками", keys: "divider line разделитель линия" },
+    { type: "divider", icon: "—", label: "Разделитель", hint: "Divider · «---»", keys: "divider line разделитель линия" },
     { type: "image", icon: "🖼", label: "Картинка", hint: "Загрузить с устройства", keys: "image picture картинка фото скриншот" },
   ];
   function closeMenu() { menu?.el.remove(); menu = null; slash = null; }
@@ -394,15 +424,17 @@ export function mount(root, opts) {
     let focus = { id: target.id };
     if (type === "divider") { const nx = blank(); insertAfter(target.id, nx); focus = { id: nx.id }; }
     if (type === "callout") focus = { id: target.children[0].id };
+    if (type === "page") { commit(); go([...path, target.id], { title: true }); return; }
     commit(); draw(focus);
   }
   function blockMenu(b, anchor) {
-    const turn = KINDS.filter((k) => k.type !== "image" && k.type !== "divider" && k.type !== b.type && !(b.type === "image" || b.type === "divider"));
+    const turn = KINDS.filter((k) => k.type !== "image" && k.type !== "divider" && k.type !== "page" && k.type !== b.type && !["image", "divider", "page"].includes(b.type));
     const items = [];
     if (turn.length) items.push({ sep: tr("Превратить в") }, ...turn.map((k) => ({ ...k, act: "turn" })));
     items.push({ sep: tr("Действия") });
     if (b.type === "callout") items.push({ act: "icon", icon: b.icon || "💡", label: "Сменить значок" });
     if (b.type === "image") items.push({ act: "replace", icon: "🖼", label: "Заменить картинку" });
+    if (b.type === "page") items.push({ act: "open", icon: "📄", label: "Открыть страницу" });
     items.push({ act: "up", icon: "↑", label: "Выше" }, { act: "down", icon: "↓", label: "Ниже" },
       { act: "dup", icon: "⧉", label: "Дублировать" }, { act: "del", icon: "🗑", label: "Удалить", danger: true });
     showMenu(items, anchor, (it) => {
@@ -412,10 +444,13 @@ export function mount(root, opts) {
       else if (it.act === "up") moveBy(b.id, -1);
       else if (it.act === "down") moveBy(b.id, 1);
       else if (it.act === "dup") { const c = clone(b); insertAfter(b.id, c); commit(); draw({ id: c.id, end: true }); }
+      else if (it.act === "open") go([...path, b.id], b.text ? null : { title: true });
+      else if (it.act === "del" && b.type === "page" && hasContent(b) && !confirm(tr("Удалить страницу «{t}» со всем, что на ней?", { t: b.text || tr("Без названия") }))) return;
       else if (it.act === "del") { const fl = flat(); const k = fl.indexOf(b); remove(b.id); commit(); const nb = fl[k - 1] || fl[k + 1]; draw(nb && find(nb.id) ? { id: nb.id, end: true } : null); }
     });
     menu.sel = items.findIndex((x) => !x.sep); paintMenu();
   }
+  const hasContent = (b) => (b.children || []).some((k) => k.type !== "p" || String(k.text || "").trim());
   function iconMenu(b, anchor) {
     showMenu(ICONS.map((ic) => ({ icon: ic, label: ic })), anchor, (it) => { b.icon = it.icon; commit(); draw(); });
     menu.el.classList.add("nb-icons");
@@ -426,6 +461,14 @@ export function mount(root, opts) {
 
   root.addEventListener("focusin", markFocus);
   root.addEventListener("input", (e) => {
+    const pt = e.target.closest("[data-ptitle]");
+    if (pt) {
+      const p = page(); if (!p) return;
+      p.text = pt.textContent.replace(/\s+/g, " ").trim();
+      if (!pt.textContent) pt.innerHTML = "";
+      const cc = root.querySelector(".nb-crumb-cur"); if (cc) cc.textContent = p.text || tr("Без названия");
+      typed(); return;
+    }
     const el = e.target.closest(".nb-text");
     if (!el) return;
     const f = cur(el);
@@ -488,6 +531,15 @@ export function mount(root, opts) {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.altKey && (e.key === "z" || e.key === "Z" || e.key === "я" || e.key === "Я")) { e.preventDefault(); if (e.shiftKey) back(redo, undo); else back(undo, redo); return; }
     if (mod && (e.key === "y" || e.key === "н")) { e.preventDefault(); back(redo, undo); return; }
+    const pt = e.target.closest("[data-ptitle]");
+    if (pt) {
+      if (e.key === "Enter" || e.key === "ArrowDown") {
+        e.preventDefault(); clearTimeout(typingT);
+        if (e.key === "Enter") { const nx = blank(); view().unshift(nx); commit(); draw({ id: nx.id }); }
+        else { const fl = flat().filter((x) => TEXT.has(x.type)); if (fl[0]) place({ id: fl[0].id, off: 0 }); }
+      }
+      return;
+    }
     const sel = e.target.closest("[data-nb=sel]");
     if (sel && (e.key === "Backspace" || e.key === "Delete")) {
       e.preventDefault();
@@ -557,8 +609,16 @@ export function mount(root, opts) {
         indent(b, -1); commit(); draw({ id: b.id }); return;
       }
       const fl = flat(), k = fl.indexOf(b);
-      const prev = fl.slice(0, k).reverse().find((x) => TEXT.has(x.type) || x.type === "image" || x.type === "divider");
-      if (!prev) return;
+      const prev = fl.slice(0, k).reverse().find((x) => TEXT.has(x.type) || ["image", "divider", "page"].includes(x.type));
+      if (!prev) {
+        if (page() && !b.text && fl.length > 1) { remove(b.id); commit(); draw({ title: true, end: true }); }
+        else if (page()) place({ title: true, end: true });
+        return;
+      }
+      if (prev.type === "page") { // страницу Backspace не удаляет — только через меню ⠿
+        if (!b.text) { remove(b.id); commit(); draw(); blockEl(prev.id)?.querySelector("[data-nb=open]")?.focus(); }
+        return;
+      }
       if (prev.type === "image" || prev.type === "divider") { remove(prev.id); commit(); draw({ id: b.id }); return; }
       const pel = textEl(prev.id), join = pel ? textLen(pel) : 0;
       prev.text = (prev.text || "") + b.text;
@@ -580,6 +640,7 @@ export function mount(root, opts) {
       const up = e.key === "ArrowUp";
       if (up ? !line.first : !line.last) return;
       const fl = flat().filter((x) => TEXT.has(x.type)), k = fl.indexOf(b), to = fl[k + (up ? -1 : 1)];
+      if (!to && up && page()) { e.preventDefault(); place({ title: true, end: true }); return; }
       if (!to) return;
       e.preventDefault();
       place(up ? { id: to.id, end: true } : { id: to.id, off: 0 });
@@ -588,6 +649,7 @@ export function mount(root, opts) {
   });
 
   root.addEventListener("paste", (e) => {
+    if (e.target.closest("[data-ptitle]")) { e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData?.getData("text/plain") || "").replace(/\s+/g, " ")); return; }
     const el = e.target.closest(".nb-text");
     if (!el) return;
     const f = cur(el);
@@ -610,10 +672,12 @@ export function mount(root, opts) {
     const a = e.target.closest("[data-nb]");
     if (!a || drag?.moved) return;
     const kind = a.dataset.nb;
+    if (kind === "go") { go(path.slice(0, +a.dataset.to || 0)); return; }
     if (kind === "kidadd") { const p = find(a.dataset.parent)?.b; if (!p) return; const nx = blank(); p.children.push(nx); commit(); draw({ id: nx.id }); return; }
     const f = cur(a);
     if (!f) return;
     const b = f.b;
+    if (kind === "open") { go([...path, b.id], b.text ? null : { title: true }); return; }
     if (kind === "check") { b.checked = !b.checked; commit(); draw(); return; }
     if (kind === "toggle") { if (open.has(b.id)) open.delete(b.id); else open.add(b.id); draw(); return; }
     if (kind === "icon") { iconMenu(b, a); return; }
@@ -688,8 +752,13 @@ export function mount(root, opts) {
       if (d < nearD && !el.classList.contains("nb-empty")) { near = el; nearD = d; }
     }
     const el = best || near;
+    root.querySelector(".nb-dropin")?.classList.remove("nb-dropin");
     if (!el) { drag.target = null; drag.line.style.display = "none"; return; }
     let pos, rect;
+    if (el.classList.contains("nb-subpage")) { // середина строки страницы — положить внутрь неё
+      const r = el.getBoundingClientRect(), q = (drag.y - r.top) / r.height;
+      if (q > 0.25 && q < 0.75) { el.classList.add("nb-dropin"); drag.line.style.display = "none"; drag.target = { id: el.dataset.id, pos: "into" }; return; }
+    }
     if (el.classList.contains("nb-empty")) { pos = "into"; rect = el.getBoundingClientRect(); }
     else {
       const row = el.querySelector(":scope > .nb-row").getBoundingClientRect(), full = el.getBoundingClientRect();
@@ -722,14 +791,18 @@ export function mount(root, opts) {
     const moved = d.ids.map((id) => find(id)?.b).filter(Boolean);
     moved.forEach((b) => { const f = find(b.id); f.list.splice(f.i, 1); });
     const ft = find(t.id);
-    if (!ft) { blocks.push(...moved); }
-    else if (t.pos === "into") { (ft.b.children ||= []).push(...moved); if (ft.b.type === "toggle") open.add(ft.b.id); }
+    if (!ft) { view().push(...moved); }
+    else if (t.pos === "into") {
+      const kids = (ft.b.children ||= []);
+      if (ft.b.type === "page" && kids.length === 1 && kids[0].type === "p" && !kids[0].text) kids.length = 0; // пустая строка новой страницы
+      kids.push(...moved);
+      if (ft.b.type === "toggle") open.add(ft.b.id);
+    }
     else ft.list.splice(ft.i + (t.pos === "after" ? 1 : 0), 0, ...moved);
     // в контейнерах вложенность списков считается заново
     moved.forEach((b) => { if (b.indent) { const f = find(b.id); const prev = f.list[f.i - 1]; if (!prev || !LIST.has(prev.type)) b.indent = 0; } });
-    if (!blocks.length) blocks.push(blank());
     commit(); draw();
-    const el = blockEl(moved[0].id);
+    const el = blockEl(t.pos === "into" && ft?.b.type === "page" ? ft.b.id : moved[0].id);
     el?.classList.add("nb-landed");
     setTimeout(() => el?.classList.remove("nb-landed"), 700);
   }
@@ -738,7 +811,8 @@ export function mount(root, opts) {
   document.addEventListener("pointerdown", onDocDown, true);
 
   draw();
-  opts.onHeadings?.(blocks.filter((b) => b.type === "h1" && b.text.trim()).map((b) => ({ id: b.id, text: b.text })));
+  opts.onHeadings?.(headings());
+  tellPath();
 
   return {
     // панель для телефона: действия над блоком, где стоит каретка
@@ -755,6 +829,7 @@ export function mount(root, opts) {
       if (kind === "up" || kind === "down") { moveBy(f.b.id, kind === "up" ? -1 : 1); return; }
       if (kind === "bold") { place({ id: f.b.id, off }); document.execCommand("bold"); }
     },
+    home() { if (path.length) go([]); },
     focusHeading(id) { blockEl(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); },
     undo() { back(undo, redo); },
     destroy() { closeMenu(); document.removeEventListener("pointerdown", onDocDown, true); clearTimeout(typingT); commit(); },

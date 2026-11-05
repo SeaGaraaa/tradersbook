@@ -967,6 +967,7 @@ function renderStrategy() {
     STL.ed = NB.mount($("#stEd"), {
       md, onChange: stChanged, upload: stUploadInsert, hydrate: hydrateThumbs,
       onHeadings: (list) => { const n = $("#stToc"); if (n) n.innerHTML = stTocHtml(list, "nbtoc"); },
+      path: STL.path, onPath: (p, sub) => { STL.path = p; $("#view .nb-page")?.classList.toggle("sub", sub); },
     });
   }
   if (r.missing.length && !S.stAutoTried && auth.hasDrive()) { S.stAutoTried = true; stAutoImport(); }
