@@ -284,6 +284,7 @@ export function mount(root, opts) {
   function setType(b, type) {
     if (b.type === type) return;
     const from = b.type;
+    if (from === "toggle" && type === "page") { b.type = "page"; if (!(b.children || []).length) b.children = [blank()]; open.delete(b.id); return; }
     if (BOX.has(from) && !BOX.has(type)) { // содержимое контейнера встаёт следом
       const f = find(b.id);
       const kids = b.children || [];
@@ -428,7 +429,7 @@ export function mount(root, opts) {
     commit(); draw(focus);
   }
   function blockMenu(b, anchor) {
-    const turn = KINDS.filter((k) => k.type !== "image" && k.type !== "divider" && k.type !== "page" && k.type !== b.type && !["image", "divider", "page"].includes(b.type));
+    const turn = KINDS.filter((k) => k.type !== "image" && k.type !== b.type && !["image", "divider", "page"].includes(b.type));
     const items = [];
     if (turn.length) items.push({ sep: tr("Превратить в") }, ...turn.map((k) => ({ ...k, act: "turn" })));
     items.push({ sep: tr("Действия") });
@@ -438,7 +439,13 @@ export function mount(root, opts) {
     items.push({ act: "up", icon: "↑", label: "Выше" }, { act: "down", icon: "↓", label: "Ниже" },
       { act: "dup", icon: "⧉", label: "Дублировать" }, { act: "del", icon: "🗑", label: "Удалить", danger: true });
     showMenu(items, anchor, (it) => {
-      if (it.act === "turn") { setType(b, it.type); commit(); draw(b.type === "callout" ? { id: b.children[0].id } : { id: b.id, end: true }); }
+      if (it.act === "turn" && it.type === "divider") { // текст не теряется: у непустого блока линия встаёт ниже
+        const empty = !String(b.text || "").trim() && !hasContent(b);
+        if (empty) { setType(b, "divider"); const nx = blank(); insertAfter(b.id, nx); commit(); draw({ id: nx.id }); }
+        else { const d = { id: nid(), type: "divider" }; insertAfter(b.id, d); commit(); draw({ id: b.id, end: true }); }
+      }
+      else if (it.act === "turn" && it.type === "page") { setType(b, "page"); commit(); go([...path, b.id], b.text ? null : { title: true }); }
+      else if (it.act === "turn") { setType(b, it.type); commit(); draw(b.type === "callout" ? { id: b.children[0].id } : { id: b.id, end: true }); }
       else if (it.act === "icon") iconMenu(b, anchor);
       else if (it.act === "replace") pickImages(b.id, b.id);
       else if (it.act === "up") moveBy(b.id, -1);
