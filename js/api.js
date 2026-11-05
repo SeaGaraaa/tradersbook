@@ -427,6 +427,18 @@ async function folderId() {
   return id;
 }
 
+// Доступ на чтение для копии на компьютер: папка скриншотов и файлы, на которые ссылается таблица.
+// drive.file даёт это только для файлов, созданных приложением, — чужие пропускаются.
+export async function shareForBackup(email, fileIds = []) {
+  let folderOk = false, files = 0;
+  const give = (id) => post(`${DRIVE}/${id}/permissions?sendNotificationEmail=false&fields=id`, { role: "reader", type: "user", emailAddress: email });
+  try { await give(await folderId()); folderOk = true; } catch (e) { if (e instanceof AuthError) throw e; }
+  for (const id of fileIds) {
+    try { await give(id); files++; } catch (e) { if (e instanceof AuthError) throw e; }
+  }
+  return { folderOk, files };
+}
+
 export async function uploadImage(file, name) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const parent = await folderId();

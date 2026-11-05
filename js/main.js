@@ -973,6 +973,17 @@ function renderStrategy() {
   if (r.missing.length && !S.stAutoTried && auth.hasDrive()) { S.stAutoTried = true; stAutoImport(); }
 }
 
+// Один раз на устройстве владельца: служебный аккаунт копии (backup.py) получает чтение папки скриншотов.
+function backupShare() {
+  if (!CONFIG.backupReader || lsGet("tj.bkshare")) return;
+  let text = String(S.strategy || "");
+  try { text += JSON.stringify(trades("live")) + JSON.stringify(trades("bt")); } catch { /* только стратегия */ }
+  const ids = [...new Set([...text.matchAll(/drive\.google\.com\/file\/d\/([\w-]{20,})/g)].map((m) => m[1]))];
+  api.shareForBackup(CONFIG.backupReader, ids)
+    .then((r) => { if (r.folderOk) lsSet("tj.bkshare", "1"); })
+    .catch(() => { /* в следующий раз */ });
+}
+
 function stTocHtml(list, attr) {
   if (list.length < 2) return "";
   return `<div class="nb-toc-t">${tr("Содержание")}</div>` + list.map((h) =>
@@ -2949,8 +2960,9 @@ async function boot() {
   if (document.documentElement.dataset.theme === "light") $('meta[name="theme-color"]')?.setAttribute("content", "#f4f6f8");
   // своя таблица пользователя: найти или создать (у нового пользователя — пустая)
   setBusy(true);
+  let sheet = null;
   try {
-    const sheet = await api.resolveSpreadsheet(LANG);
+    sheet = await api.resolveSpreadsheet(LANG);
     if (sheet.created) toast(tr("Создал тебе таблицу «Trader'sBook» в Google Drive — все данные будут там"));
   } catch (e) {
     setBusy(false);
@@ -2959,6 +2971,7 @@ async function boot() {
   }
   setBusy(false);
   if (!(await reload())) return;
+  if (sheet?.owner) backupShare();
   let d = null;
   try { d = JSON.parse(lsGet("tj.draft") || "null"); } catch { /* битый черновик */ }
   if (d?.form && !d.form.shots) { clearDraft(); d = null; } // черновик старой версии приложения

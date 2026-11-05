@@ -4,6 +4,9 @@ export const CONFIG = {
   clientId: "610068753148-8k4nu780sa73a04nho61elscdcre1qg5.apps.googleusercontent.com",
   // Таблица владельца: открывается только его аккаунтам (SHA-256 адресов ниже), остальным создаётся своя.
   spreadsheetId: "1XO5CnMMt6SDNxTO3R1rtAJL9u9pAOIrt6KK_JgEM_B4",
+  // служебный аккаунт копии на компьютер (tools/journal_sync/backup.py): получает доступ на чтение
+  // к папке скриншотов владельца — только в таблице владельца, один раз
+  backupReader: "trading@trading-511922.iam.gserviceaccount.com",
   ownerEmailSha256: [
     "2801c14933bbd50afee7e2e4c177980c0e618c6a3d50b6f59a27e57089ee6b2f",
     "3a252a54402d016df8d1a410e6c9712119ce50f54ceb684e9cdbfd9c14825d5e",
