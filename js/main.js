@@ -13,6 +13,7 @@ import * as Lot from "./lot.js";
 import * as AI from "./ai.js";
 import * as TV from "./tvread.js";
 import { sortable } from "./sortable.js";
+import * as SO from "./stoutline.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, weekdayName, weekdayOf, monthKey, fromInput, sameMinute, sessionOf,
@@ -984,12 +985,11 @@ function renderStrategyBuilder() {
   const area = (path, value, ph, rows = 3) =>
     `<textarea class="stb-area" rows="${rows}" data-stb="${path}" placeholder="${esc(ph)}">${esc(value || "")}</textarea>`;
   const field = (label, help, html) => `<label class="stb-field"><span class="stb-label">${label}${help ? ` <span class="muted">${help}</span>` : ""}</span>${html}</label>`;
-  const tools = (path, i, n) => `<span class="stb-tools">
-      <button type="button" class="stb-btn" data-stbmove="${path}|${i}|-1" ${i ? "" : "disabled"} aria-label="${tr("Выше")}">↑</button>
-      <button type="button" class="stb-btn" data-stbmove="${path}|${i}|1" ${i < n - 1 ? "" : "disabled"} aria-label="${tr("Ниже")}">↓</button>
+  const grip = `<span class="sort-grip" data-handle title="${tr("Зажми и перетащи, чтобы поменять порядок")}">⠿</span>`;
+  const tools = (path, i) => `<span class="stb-tools">
       <button type="button" class="chip-x" data-stbdel="${path}|${i}" aria-label="${tr("Удалить")}">×</button></span>`;
   const images = (path, list) => `<div class="stb-imgs">
-      ${(list || []).map((u, j) => `<span class="stb-thumb">${St.imageHtml(u)}<button type="button" class="chip-x" data-stbimgdel="${path}|${j}" aria-label="${tr("Удалить")}">×</button></span>`).join("")}
+      ${(list || []).map((u, j) => `<span class="stb-thumb" data-sort="${path}" data-i="${j}">${St.imageHtml(u)}<button type="button" class="chip-x" data-stbimgdel="${path}|${j}" aria-label="${tr("Удалить")}">×</button></span>`).join("")}
       <label class="btn ghost sm file">${tr("+ картинка")}<input type="file" accept="image/*" multiple data-stbimg="${path}" hidden></label></div>`;
 
   const body = (s, i) => {
@@ -1014,8 +1014,8 @@ function renderStrategyBuilder() {
     }
     return `${(s.setups || []).map((st, j) => {
       const q = `${p}.setups.${j}`;
-      return `<div class="stb-setup">
-        <div class="stb-head"><input class="stb-name" data-stb="${q}.name" value="${esc(st.name)}" placeholder="${tr("Название сетапа")}">${tools(`${p}.setups`, j, s.setups.length)}</div>
+      return `<div class="stb-setup" data-sort="${p}.setups" data-i="${j}">
+        <div class="stb-head">${grip}<input class="stb-name" data-stb="${q}.name" value="${esc(st.name)}" placeholder="${tr("Название сетапа")}">${tools(`${p}.setups`, j)}</div>
         ${field(tr("Когда появляется"), tr("— контекст, время, что делает цена"), area(`${q}.when`, st.when, tr("Например:\nАзия в диапазоне\nЛондон снимает максимум Азии"), 3))}
         <div class="stb-grid stb-grid-3">
           ${field(tr("Вход"), "", area(`${q}.entry`, st.entry, tr("Например: слом структуры на M5, вход от отката"), 2))}
@@ -1049,8 +1049,8 @@ function renderStrategyBuilder() {
     </div>
     ${preview ? `<article class="panel st-body">${r.html || `<div class="empty">${tr("Пока пусто — заполни хотя бы один раздел")}</div>`}</article>` : `
     <div class="hint stb-intro">${tr("Заполняй только то, что нужно: пустые поля и разделы на странице не появятся. В каждом поле одна строка — один пункт.")}</div>
-    ${d.sections.map((s, i) => `<section class="panel stb-sec">
-      <div class="stb-head"><input class="stb-title" data-stb="sections.${i}.title" value="${esc(s.title)}" placeholder="${tr("Название раздела")}">${tools("sections", i, d.sections.length)}</div>
+    ${d.sections.map((s, i) => `<section class="panel stb-sec" data-sort="sections" data-i="${i}">
+      <div class="stb-head">${grip}<input class="stb-title" data-stb="sections.${i}.title" value="${esc(s.title)}" placeholder="${tr("Название раздела")}">${tools("sections", i)}</div>
       ${body(s, i)}
     </section>`).join("")}
     <div class="stb-add">
@@ -2199,7 +2199,7 @@ async function impSave() {
 }
 
 function renderStrategyEditor() {
-  const preview = S.stPreview;
+  const preview = S.stPreview, outline = !preview && S.stOutline;
   const r = preview ? St.render(S.stEdit) : null;
   $("#view").innerHTML = `<div class="st-page">
     <header class="panel st-head">
@@ -2212,10 +2212,11 @@ function renderStrategyEditor() {
     <div class="panel st-editor">
       <div class="st-tools">
         <div class="seg st-mode">
-          <button type="button" data-act="st-write" class="${preview ? "" : "on"}">${tr("Текст")}</button>
+          <button type="button" data-act="st-write" class="${preview || outline ? "" : "on"}">${tr("Текст")}</button>
+          <button type="button" data-act="st-outline" class="${outline ? "on" : ""}">${tr("Порядок разделов")}</button>
           <button type="button" data-act="st-preview" class="${preview ? "on" : ""}">${tr("Просмотр")}</button>
         </div>
-        ${preview ? "" : `
+        ${preview || outline ? "" : `
         <button type="button" class="btn ghost sm" data-stins="h1">${tr("Раздел")}</button>
         <button type="button" class="btn ghost sm" data-stins="h2">${tr("Подраздел")}</button>
         <button type="button" class="btn ghost sm" data-stins="li">${tr("Пункт")}</button>
@@ -2225,12 +2226,46 @@ function renderStrategyEditor() {
         <label class="btn ghost sm file">${tr("Картинка")}<input type="file" accept="image/*" multiple data-stimg="1" hidden></label>`}
       </div>
       ${preview ? `<article class="st-body st-preview">${r.html}</article>`
+        : outline ? stOutlineHtml()
         : `<textarea class="st-text" data-stmd="1" spellcheck="true">${esc(S.stEdit)}</textarea>
       <details class="st-help"><summary>${tr("Как оформлять")}</summary>
         <div class="muted">${tr("<code># Раздел</code>, <code>## Подраздел</code>; <code>- пункт</code>, <code>1. пункт</code>, <code>- [ ] галочка</code>; вложенность — Tab; <code>**жирный**</code>; блок-подсказка: <code>:::callout ⚠️</code> … <code>:::</code>; сворачиваемый блок: <code>:::details Открыть</code> … <code>:::</code>; <code>---</code> — разделитель.")}</div></details>`}
     </div>
   </div>`;
   if (preview) hydrateThumbs($("#view"));
+}
+
+// «Порядок разделов»: заголовки деревом, раздел перетаскивается вместе с текстом и подразделами
+function stOutlineHtml() {
+  const tree = SO.parse(S.stEdit || "");
+  const grip = `<span class="sort-grip" data-handle title="${tr("Зажми и перетащи, чтобы поменять порядок")}">⠿</span>`;
+  const kids = (n, path) => n.children.map((c, i) => {
+    const p = path === "" ? `${i}` : `${path}.${i}`;
+    return `<div class="sto-item lv${c.level}" data-sort="o:${path}" data-i="${i}">
+      <div class="sto-row">${grip}<span class="sto-title">${esc(c.title) || `<span class="muted">${tr("без названия")}</span>`}</span>
+        <span class="sto-n muted">${tr("строк: {n}", { n: SO.size(c) })}</span></div>
+      ${c.children.length ? `<div class="sto-kids">${kids(c, p)}</div>` : ""}</div>`;
+  }).join("");
+  return tree.children.length
+    ? `<div class="hint sto-hint">${tr("Тяни раздел за ⠿ — он переедет вместе со своим текстом и подразделами. Подразделы двигаются внутри своего раздела. Изменения сохранятся кнопкой «Сохранить».")}</div>
+      <div class="sto">${kids(tree, "")}</div>`
+    : `<div class="empty">${tr("В тексте нет заголовков (# Раздел) — двигать нечего")}</div>`;
+}
+
+function stOutlineReorder(key, order) {
+  const tree = SO.parse(S.stEdit || "");
+  const parent = SO.nodeAt(tree, key.slice(2));
+  const old = parent.children;
+  parent.children = order.map((el) => old[+el.dataset.i]);
+  S.stEdit = SO.serialize(SO.tidy(tree));
+  renderStrategy();
+}
+
+function stbReorder(key, order) {
+  const [p, k] = clPath(S.stB, key);
+  const old = p[k];
+  p[k] = order.map((el) => old[+el.dataset.i]);
+  renderStrategy();
 }
 
 function stInsert(kind) {
@@ -2325,8 +2360,9 @@ function strategyClick(b) {
     S.stEdit = null; renderStrategy(); return true;
   }
   if (a === "st-save") { stSave(); return true; }
-  if (a === "st-write") { S.stPreview = false; renderStrategy(); return true; }
-  if (a === "st-preview") { S.stPreview = true; renderStrategy(); return true; }
+  if (a === "st-write") { S.stPreview = false; S.stOutline = false; renderStrategy(); return true; }
+  if (a === "st-outline") { S.stPreview = false; S.stOutline = true; renderStrategy(); return true; }
+  if (a === "st-preview") { S.stPreview = true; S.stOutline = false; renderStrategy(); return true; }
   if (a === "st-expand") {
     const all = $$(".st-details");
     const open = all.some((d) => !d.open);
@@ -2994,7 +3030,14 @@ function events() {
   $("#aiBtn").onclick = () => setView("ai");
   $("#refresh").onclick = () => { newsRefresh(true); reload().then((ok) => ok && toast(tr("Обновлено"))); };
   $("#logout").onclick = () => { if (confirm(tr("Выйти из Google-аккаунта в приложении?"))) { auth.logout(); showLogin(); } };
-  sortable($("#view"), { onDrop: (path, order) => { if (S.clDraft) clReorder(path, order); } });
+  sortable($("#view"), {
+    axis: (key) => (key.endsWith("images") ? "x" : "y"),
+    onDrop: (key, order) => {
+      if (key.startsWith("o:") && S.stEdit != null) stOutlineReorder(key, order);
+      else if (order[0].closest(".stb-page") && S.stB) stbReorder(key, order);
+      else if (order[0].closest(".cle2") && S.clDraft) clReorder(key, order);
+    },
+  });
   $("#view").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (btn && S.view === "checklist" && checklistClick(btn)) return;

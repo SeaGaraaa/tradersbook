@@ -295,6 +295,24 @@ input[type="datetime-local"] { min-width: 0; -webkit-appearance: none; appearanc
 .sort-ph { color: transparent !important; opacity: .35; outline: 2px dashed var(--accent); outline-offset: -2px; }
 .sort-ph > * { visibility: hidden; }
 body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+.stb-head .sort-grip { margin: 0 -4px 0 -6px; }
+.stb-thumb { cursor: grab; touch-action: none; }
+.stb-thumb img { -webkit-user-drag: none; user-select: none; }
+.stb-sec.sort-ghost, .stb-setup.sort-ghost { background: var(--panel); }
+.stb-thumb.sort-ghost.lifted { transform: scale(1.1) rotate(-2deg); border-radius: 10px; }
+/* порядок разделов стратегии */
+.sto-hint { margin: 0 0 10px; }
+.sto { display: flex; flex-direction: column; gap: 6px; }
+.sto-item { border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.sto-row { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; min-height: 40px; }
+.sto-row .sort-grip { margin: 0; }
+.sto-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sto-item.lv1 > .sto-row .sto-title { font-weight: 700; font-size: 15px; }
+.sto-item.lv2 > .sto-row .sto-title { font-weight: 600; }
+.sto-n { flex: none; font-size: 12px; }
+.sto-kids { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 26px; }
+.sto-kids .sto-item { background: var(--panel); }
+.sto-item.sort-ghost { background: var(--panel2); }
 @media (prefers-reduced-motion: reduce) { .sort-ghost, .sort-ghost.landing { transition: none; } }
 .chip-n { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-right: 5px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; }
 .chip-add { display: inline-flex; gap: 6px; flex: 1 1 220px; }

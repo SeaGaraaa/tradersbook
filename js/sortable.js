@@ -24,7 +24,7 @@ export function sortable(root, { onDrop, axis = (key) => "y" }) {
     const dir = axis(key);
     const sx = e.clientX, sy = e.clientY;
     let ghost = null, rect = null, px = sx, py = sy, raf = 0, startOrder = null;
-    if (handle && e.pointerType !== "mouse") e.preventDefault();
+    e.preventDefault(); // без выделения текста и родного перетаскивания картинок
 
     const begin = () => {
       startOrder = sibs();
