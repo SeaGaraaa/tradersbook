@@ -820,7 +820,7 @@ function listField(kind, label, items, selected) {
       `<button type="button" class="chip ${selected.includes(p) ? "on" : ""}${items.includes(p) ? "" : " stale"}" data-pick="${kind}" data-val="${esc(p)}">${selected.length > 1 && selected.includes(p) ? `<b class="chip-n">${selected.indexOf(p) + 1}</b>` : ""}${esc(p)}</button>`).join("")
       || `<span class="muted">${tr("Список пуст — нажми «Изменить список»")}</span>`;
   }
-  return `<div class="field${manage ? " managing" : ""}${kind === "idea" ? " idea-field" : ""}">
+  return `<div class="field${manage ? " managing" : ""}${kind === "idea" && S.ed.mode === "bt" ? " idea-field" : ""}">
     <div class="field-h"><span>${label}</span>
       <button type="button" class="link-btn" data-manage="${kind}">${manage ? tr("Готово") : tr("Изменить список")}</button></div>
     <div class="chips">${chips}</div>
@@ -894,6 +894,7 @@ function renderEditor() {
           <label>Session${sel("session", S.lists.session)}<span class="sess-note">${sessionNoteHtml()}</span></label>
           <label>Result${seg("result", DEF.result, f.result)}</label>
         </div>
+        ${bt ? "" : listField("idea", tr("Сетап (необязательно)"), S.lists.idea, f.idea ? [f.idea] : [])}
         ${listField("poi", "POI", S.lists.poi, f.poi)}
         ${listField("entry", "Entry", S.lists.entry, f.entry ? [f.entry] : [])}
         <div class="row3">
