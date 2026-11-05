@@ -12,6 +12,7 @@ import * as News from "./news.js";
 import * as Lot from "./lot.js";
 import * as AI from "./ai.js";
 import * as TV from "./tvread.js";
+import { sortable } from "./sortable.js";
 import { t as tr, setLang, applyStatic, LANG } from "./i18n.js";
 import {
   num, isNum, parseDT, fmtDT, toInput, fmtDay, fmtMonth, weekdayName, weekdayOf, monthKey, fromInput, sameMinute, sessionOf,
@@ -801,43 +802,7 @@ function seg(name, options, cur) {
 
 // Пункт списка в режиме правки: зажать и перетащить — меняет порядок, × убирает.
 function editChip(kind, p) {
-  return `<span class="chip edit" data-drag="${kind}" data-val="${esc(p)}" title="${tr("Зажми и перетащи, чтобы поменять порядок")}"><span class="chip-grip" aria-hidden="true">⠿</span>${esc(p)}<button type="button" class="chip-x" data-rm="${kind}" data-val="${esc(p)}" aria-label="${tr("Убрать {x}", { x: esc(p) })}">×</button></span>`;
-}
-
-// Перетаскивание пунктов списка мышью или пальцем (pointer events).
-function chipDrag(el) {
-  el.addEventListener("pointerdown", (e) => {
-    const chip = e.target.closest(".chip.edit[data-drag]");
-    if (!chip || e.target.closest("button") || e.button > 0 || !S.ed) return;
-    const box = chip.parentElement, kind = chip.dataset.drag;
-    const sx = e.clientX, sy = e.clientY;
-    let on = false;
-    const move = (ev) => {
-      if (!on) {
-        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
-        on = true; chip.classList.add("dragging"); box.classList.add("drag-box");
-      }
-      ev.preventDefault();
-      const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(".chip.edit[data-drag]");
-      if (!over || over === chip || over.parentElement !== box) return;
-      const r = over.getBoundingClientRect();
-      const after = ev.clientY > r.bottom ? true : ev.clientY < r.top ? false : ev.clientX > r.left + r.width / 2;
-      box.insertBefore(chip, after ? over.nextSibling : over);
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      if (!on) return;
-      chip.classList.remove("dragging"); box.classList.remove("drag-box");
-      const list = [...box.querySelectorAll(".chip.edit[data-drag]")].map((c) => c.dataset.val);
-      if (list.some((v, i) => v !== S.lists[kind][i])) updateList(kind, list);
-    };
-    // слушаем окно: перестановка узла в DOM сбрасывает захват указателя
-    window.addEventListener("pointermove", move, { passive: false });
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-  });
+  return `<span class="chip edit" data-sort="${kind}" data-val="${esc(p)}" title="${tr("Зажми и перетащи, чтобы поменять порядок")}"><span class="chip-grip" aria-hidden="true">⠿</span>${esc(p)}<button type="button" class="chip-x" data-rm="${kind}" data-val="${esc(p)}" aria-label="${tr("Убрать {x}", { x: esc(p) })}">×</button></span>`;
 }
 
 // Поле-список (POI — несколько значений, Entry и Idea — одно) с режимом правки самого списка.
@@ -2578,7 +2543,7 @@ async function runDelete(n) {
 function checklistEditor() {
   const d = S.clDraft;
   const items = (path, list) => `<div class="cle2-items">${list.map(([, text], i) => `
-      <div class="cle2-item"><span class="cle2-num">${i + 1}</span><textarea rows="1" class="cle2-area" data-clp="${path}.${i}.1" placeholder="${tr("Текст пункта")}">${esc(text)}</textarea>
+      <div class="cle2-item" data-sort="${path}" data-i="${i}"><span class="sort-grip" data-handle title="${tr("Зажми и перетащи, чтобы поменять порядок")}">⠿</span><span class="cle2-num">${i + 1}</span><textarea rows="1" class="cle2-area" data-clp="${path}.${i}.1" placeholder="${tr("Текст пункта")}">${esc(text)}</textarea>
         <button type="button" class="chip-x" data-cldel="${path}.${i}" aria-label="${tr("Удалить пункт")}">×</button></div>`).join("")}
       <button type="button" class="cle2-add" data-cladd="${path}">${tr("+ пункт")}</button></div>`;
   return `<section class="panel nw-filters clx cle2">
@@ -2601,8 +2566,8 @@ function checklistEditor() {
     <div class="nw-group">
       <div class="nw-ghead"><span>${tr("Общий блок")} <em>${tr("проходится всегда")}</em></span>
         <button type="button" class="link-btn" data-cladd="general">${tr("+ группа")}</button></div>
-      ${d.general.map((g, gi) => `<div class="cle2-card">
-        <div class="cle2-head"><input data-clp="general.${gi}.title" value="${esc(g.title)}" placeholder="${tr("Название группы")}">
+      ${d.general.map((g, gi) => `<div class="cle2-card" data-sort="general" data-i="${gi}">
+        <div class="cle2-head"><span class="sort-grip" data-handle title="${tr("Зажми и перетащи, чтобы поменять порядок")}">⠿</span><input data-clp="general.${gi}.title" value="${esc(g.title)}" placeholder="${tr("Название группы")}">
           <button type="button" class="chip-x" data-cldel="general.${gi}" aria-label="${tr("Удалить группу")}">×</button></div>
         ${items(`general.${gi}.items`, g.items)}</div>`).join("")}
     </div>
@@ -2610,8 +2575,8 @@ function checklistEditor() {
       <div class="nw-ghead"><span>${tr("Сетапы")} <em>${tr("блок добавляется, когда сетап выбран")}</em></span>
         <button type="button" class="link-btn" data-cladd="setups">${tr("+ сетап")}</button></div>
       ${d.setups.length ? "" : `<div class="muted cle2-empty">${tr("Сетапов пока нет")}</div>`}
-      ${d.setups.map((s, si) => `<div class="cle2-card">
-        <div class="cle2-head"><input data-clp="setups.${si}.name" value="${esc(s.name)}" placeholder="${tr("Название сетапа")}">
+      ${d.setups.map((s, si) => `<div class="cle2-card" data-sort="setups" data-i="${si}">
+        <div class="cle2-head"><span class="sort-grip" data-handle title="${tr("Зажми и перетащи, чтобы поменять порядок")}">⠿</span><input data-clp="setups.${si}.name" value="${esc(s.name)}" placeholder="${tr("Название сетапа")}">
           <input class="cle2-entry" data-clp="setups.${si}.entry" value="${esc(s.entry || "")}" placeholder="${tr("Вход (например, от Confirm)")}">
           <button type="button" class="chip-x" data-cldel="setups.${si}" aria-label="${tr("Удалить сетап")}">×</button></div>
         ${items(`setups.${si}.items`, s.items)}</div>`).join("")}
@@ -2641,6 +2606,14 @@ function clAdd(path) {
   if (path === "general") d.general.push({ title: tr("Новая группа"), items: [[CL.newId(), ""]] });
   else if (path === "setups") d.setups.push({ id: CL.newId("S"), name: tr("Новый сетап"), entry: "", no: "", items: [[CL.newId(), ""]] });
   else { const [p, k] = clPath(d, path); p[k].push([CL.newId(), ""]); }
+  renderChecklist();
+}
+
+// новый порядок пунктов, групп или сетапов после перетаскивания
+function clReorder(path, order) {
+  const [p, k] = clPath(S.clDraft, path);
+  const old = p[k];
+  p[k] = order.map((el) => old[+el.dataset.i]);
   renderChecklist();
 }
 
@@ -2906,7 +2879,7 @@ async function deleteTrade() {
 
 function editorEvents() {
   const el = $("#editor");
-  chipDrag(el);
+  sortable(el, { axis: () => "x", onDrop: (kind, order) => updateList(kind, order.map((c) => c.dataset.val)) });
   el.addEventListener("click", (e) => {
     const b = e.target.closest("button, [data-img]");
     if (!b || !S.ed) return;
@@ -3021,6 +2994,7 @@ function events() {
   $("#aiBtn").onclick = () => setView("ai");
   $("#refresh").onclick = () => { newsRefresh(true); reload().then((ok) => ok && toast(tr("Обновлено"))); };
   $("#logout").onclick = () => { if (confirm(tr("Выйти из Google-аккаунта в приложении?"))) { auth.logout(); showLogin(); } };
+  sortable($("#view"), { onDrop: (path, order) => { if (S.clDraft) clReorder(path, order); } });
   $("#view").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (btn && S.view === "checklist" && checklistClick(btn)) return;
