@@ -1160,27 +1160,38 @@ function cxReportPreview() {
   const list = Conn.fromReport(r.p, r.tz);
   const done = Conn.imported(), journal = trades("live");
   const label = (r.p.platform === "mt4" ? "MT4" : "MT5") + (r.p.account ? " " + r.p.account : "") + " (" + tr("отчёт") + ")";
-  const items = list.map((t) => {
-    const key = `file:${r.p.account}:${t.id}`;
-    const dup = Conn.isDuplicate(t, journal), seen = !dup && done.has(key);
-    return { key, row: Conn.toRow(t, label, S.lists.pair), dup, seen, pick: !dup && !seen };
-  });
+  const items = list.map((t) => cxItem(t, `file:${r.p.account}:${t.id}`, label, journal, done));
   CX.preview = { conn: "", items, at: Date.now() };
   renderConnect();
 }
 
+// Строка предпросмотра: новая сделка или уже записанная (тогда fill — пустые ячейки, которые можно дописать)
+function cxItem(t, key, label, journal, done) {
+  const row = Conn.toRow(t, label, S.lists.pair), m = Conn.findDuplicate(t, journal);
+  if (m) {
+    const fill = Conn.fillFor(row, m);
+    return { key, row, dup: true, seen: false, fill, match: { n: m.n, open: m.v[0], pair: m.v[3] }, pick: fill.length > 0 };
+  }
+  const seen = done.has(key);
+  return { key, row, dup: false, seen, fill: [], pick: !seen };
+}
+
+const fillLabel = (x) => x.fill.filter(([c]) => Conn.FILL_NAMES[c]).map(([c]) => Conn.FILL_NAMES[c]).join(", ");
+
 function previewHtml(pv) {
-  const fresh = pv.items.filter((x) => !x.dup);
+  const fresh = pv.items.filter((x) => !x.dup), fillable = pv.items.filter((x) => x.fill.length);
+  const nAdd = fresh.filter((x) => x.pick).length, nFill = fillable.filter((x) => x.pick).length;
   return `<section class="panel"><h3>${tr("Найдено сделок: {n}", { n: pv.items.length })}${pv.items.length - fresh.length ? ` <span class="muted">· ${tr("уже в журнале: {n}", { n: pv.items.length - fresh.length })}</span>` : ""}</h3>
     ${pv.items.length ? `<div class="ana-scroll-x"><table class="ana cx-table"><thead><tr><th></th><th>${tr("Вход")}</th><th>${tr("Пара")}</th><th></th><th>${tr("Результат")}</th><th class="r">Risk</th><th class="r">Profit</th></tr></thead><tbody>
-      ${pv.items.map((x, i) => `<tr class="${x.dup ? "muted" : ""}"><td><input type="checkbox" data-cxpick="${i}" ${x.pick ? "checked" : ""} ${x.dup ? "disabled" : ""}></td>
+      ${pv.items.map((x, i) => `<tr class="${x.dup && !x.fill.length ? "muted" : ""}"><td><input type="checkbox" data-cxpick="${i}" ${x.pick ? "checked" : ""} ${x.dup && !x.fill.length ? "disabled" : ""}></td>
         <td>${esc(fmtDT(x.row[0]))}</td><td>${esc(x.row[3])}</td><td>${esc(x.row[2])}</td>
-        <td>${x.dup ? tr("уже есть") : x.seen && !x.pick ? `<span class="muted">${tr("скрыта")}</span> ${esc(x.row[7])}` : esc(x.row[7])}</td><td class="r">${x.row[9] === "" ? "—" : fmtNum(x.row[9]) + "%"}</td>
+        <td>${x.dup ? (x.fill.length ? `${tr("уже есть")}<br><span class="cx-fill">${tr("дополнить: {c}", { c: esc(fillLabel(x)) })}</span>` : tr("уже есть")) : x.seen && !x.pick ? `<span class="muted">${tr("скрыта")}</span> ${esc(x.row[7])}` : esc(x.row[7])}</td><td class="r">${x.row[9] === "" ? "—" : fmtNum(x.row[9]) + "%"}</td>
         <td class="r ${x.row[10] > 0 ? "pos" : x.row[10] < 0 ? "neg" : ""}">${x.row[10] === "" ? "—" : fmtSigned(x.row[10]) + "%"}</td></tr>`).join("")}
     </tbody></table></div>
+    ${fillable.length ? `<div class="hint">${tr("«Дополнить» — сделка уже в журнале: дописываются только пустые ячейки (Close, Result, RR, Risk, Profit), твои значения не меняются.")}</div>` : ""}
     ${fresh.length ? `<div class="hint">${tr("Сделки без галочки не добавятся и в следующий раз будут показаны как «скрыта» — так удалённые из журнала сделки не вернутся сами.")}</div>` : ""}` : `<div class="empty">${tr("Новых закрытых сделок за этот период нет")}</div>`}
     <div class="cle-actions">
-      ${fresh.length ? `<button type="button" class="btn primary" data-act="cx-add">${pv.items.some((x) => x.pick) ? tr("Добавить в журнал: {n}", { n: pv.items.filter((x) => x.pick).length }) : tr("Скрыть эти сделки")}</button>` : ""}
+      ${fresh.length || nFill ? `<button type="button" class="btn primary" data-act="cx-add">${nFill ? (nAdd ? tr("Добавить: {a}, дополнить: {b}", { a: nAdd, b: nFill }) : tr("Дополнить в журнале: {n}", { n: nFill })) : nAdd ? tr("Добавить в журнал: {n}", { n: nAdd }) : tr("Скрыть эти сделки")}</button>` : ""}
       <button type="button" class="btn ghost" data-act="cx-close">${tr("Назад")}</button>
     </div></section>`;
 }
@@ -1218,11 +1229,7 @@ async function cxRun(id) {
     const done = Conn.imported();
     const journal = trades("live");
     const name = Conn.SOURCES[c.src].name;
-    const items = list.map((t) => {
-      const key = `${c.id}:${t.id}`;
-      const dup = Conn.isDuplicate(t, journal), seen = !dup && done.has(key);
-      return { key, row: Conn.toRow(t, c.label || name, S.lists.pair), dup, seen, pick: !dup && !seen };
-    });
+    const items = list.map((t) => cxItem(t, `${c.id}:${t.id}`, c.label || name, journal, done));
     CX.preview = { conn: id, items, at: Date.now() };
     CX.msg = "";
   } catch (e) {
@@ -1237,15 +1244,28 @@ async function cxRun(id) {
 async function cxAdd() {
   const pv = CX.preview;
   const picked = pv.items.filter((x) => x.pick && !x.dup);
+  const fills = pv.items.filter((x) => x.pick && x.dup && x.fill.length);
   setBusy(true);
   try {
+    // сначала дописать уже записанные сделки (до добавления новых строк и сортировки)
+    let filled = 0;
+    for (const x of fills) {
+      let n = x.match.n;
+      if (!(await api.verifyRow(api.BOOKS.live, n, x.match.open, x.match.pair))) {
+        await reload();
+        n = trades("live").find((t) => String(t.v[0]) === String(x.match.open) && t.v[3] === x.match.pair)?.n;
+        if (!n) continue;
+      }
+      await api.writeCells(api.BOOKS.live, n, x.fill);
+      filled++;
+    }
     const last = trades("live").reduce((m, t) => Math.max(m, t.n), 1);
     if (picked.length) await api.appendRows(api.BOOKS.live, picked.map((x) => x.row), book("live").sheetId, last);
     Conn.markImported(pv.items.filter((x) => !x.dup).map((x) => x.key)); // добавленные и снятые: потом не предлагаются сами
     const c = Conn.list().find((x) => x.id === pv.conn);
     if (c) { c.last = pv.at; Conn.upsert(c); }
     CX.preview = null;
-    toast(tr("Добавлено сделок: {n}", { n: picked.length }));
+    toast([picked.length || !filled ? tr("Добавлено сделок: {n}", { n: picked.length }) : "", filled ? tr("Дополнено сделок: {n}", { n: filled }) : ""].filter(Boolean).join(" · "));
     await reload();
   } catch (e) {
     handleErr(e);

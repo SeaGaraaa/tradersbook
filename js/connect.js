@@ -330,9 +330,24 @@ export function toRow(t, srcName, pairs = []) {
 const IMP = "tj.imported";
 export const imported = () => { try { return new Set(JSON.parse(lsGet(IMP) || "[]")); } catch { return new Set(); } };
 export function markImported(ids) { const s = imported(); ids.forEach((i) => s.add(i)); lsSet(IMP, JSON.stringify([...s].slice(-20000))); }
-export function isDuplicate(t, journal) {
+export function findDuplicate(t, journal) {
   const p = aliasOf(normPair(t.sym)), o = wall(t.open);
-  return journal.some((x) => aliasOf(normPair(x.v[3])) === p && Math.abs(parseDT(x.v[0]) - o) <= 2 / 1440);
+  return journal.find((x) => aliasOf(normPair(x.v[3])) === p && Math.abs(parseDT(x.v[0]) - o) <= 2 / 1440) || null;
+}
+export const isDuplicate = (t, journal) => !!findDuplicate(t, journal);
+
+// Сделка уже в журнале: что дописать из терминала (как sync.py) — только пустые Close, Result, RR, Risk, Profit.
+// Заполненное пользователем не меняется. К Notes добавляется SL, по которому посчитан Risk.
+export const FILL_NAMES = { 1: "Close", 7: "Result", 8: "RR", 9: "Risk", 10: "Profit" };
+export function fillFor(row, x) {
+  const empty = (c) => String(x.v[c] ?? "").trim() === "";
+  const ch = [1, 7, 8, 9, 10].filter((c) => empty(c) && row[c] !== "").map((c) => [c, row[c]]);
+  if (ch.some(([c]) => c === 9)) {
+    const sl = String(row[19]).split("; ").find((s) => s.startsWith("SL "));
+    const note = empty(19) ? row[19] : sl && !String(x.v[19]).includes(sl) ? `${x.v[19]}; [авто] Risk по ${sl}` : "";
+    if (note) ch.push([19, note]);
+  }
+  return ch;
 }
 
 // ---------- отчёт терминала MT5 / MT4 (HTML: «История» → правый клик → «Отчёт» → HTML) ----------
