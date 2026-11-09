@@ -375,10 +375,11 @@ export async function resolveSpreadsheet(lang = "ru") {
   return use(await createSpreadsheet(lang), true);
 }
 
-// Стартовые варианты для нового пользователя — общие, без чьей-то стратегии; всё правится в «Изменить список».
+// Стартовые варианты для нового пользователя; всё правится в «Изменить список».
+// POI и Entry — как у Артура (Lists!A/B его таблицы на 09.11.2026, по его слову).
 const STARTER = {
-  poi: ["FVG", "Order Block", "Breaker Block", "Liquidity Sweep", "Support / Resistance", "Supply / Demand"],
-  entry: ["Market", "Limit", "Confirmation", "Break & Retest"],
+  poi: ["FVG W", "FVG D", "FVG H4", "FVG M15", "i-FVG", "BPR", "OB D", "OB H4", "OB H1", "OB m15", "RB HTF", "Dealing Range", "Sweep liquidity", "BOS m15", "Confirm m15"],
+  entry: ["m15 Inversion", "m15 Shift", "m5 Shift", "m15 Order Block"],
   pair: ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "XAUUSD", "US30", "NAS100", "GER40", "BTCUSD"],
   tf: ["W1", "D1", "H4", "H1", "m15", "m5", "m1"],
 };
